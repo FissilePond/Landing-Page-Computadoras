@@ -333,8 +333,8 @@ export function initPcWorkbench(
 ) {
     let currentSelection = selected;
     const host = canvas.parentElement;
-    const width = () => Math.max(host?.clientWidth || canvas.clientWidth, 1);
-    const height = () => Math.max(host?.clientHeight || canvas.clientHeight, 1);
+    const width = () => Math.max(host?.getBoundingClientRect().width || canvas.getBoundingClientRect().width, 1);
+    const height = () => Math.max(host?.getBoundingClientRect().height || canvas.getBoundingClientRect().height, 1);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#08101c");
     scene.fog = new THREE.FogExp2("#08101c", 0.035);
