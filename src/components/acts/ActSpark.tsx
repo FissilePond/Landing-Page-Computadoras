@@ -2,13 +2,21 @@ import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
+import { IDEA_COPY } from '../../data/content'
 import {
   DEFAULT_SPARK_PATH,
   loadSparkPath,
   waypointsToSmoothPathD,
   type SparkWaypoint,
 } from '../../data/sparkPath'
+import {
+  DEFAULT_CONSTELLATION,
+  loadConstellation,
+  type ConstellationMap,
+  type Edge,
+} from '../../data/constellation'
 import { SparkPathEditor } from './SparkPathEditor'
+import { ConstellationEditor } from './ConstellationEditor'
 
 gsap.registerPlugin(ScrollTrigger, MotionPathPlugin)
 
@@ -33,6 +41,29 @@ const PHRASES = [
 const TRAIL_LIFE_MS = 1200
 const TRAIL_STEP = 0.12
 const TRAIL_MAX_POINTS = 160
+
+/** Pantallas de scroll que dura el Acto 2 con la sección ya congelada */
+const IDEA_SCREENS = 3.8
+
+/** Curva con la que la luz se apaga al acercarse a la cabeza. La usan los dos actos:
+ *  el Acto 2 la necesita para arrancar en el mismo estado en que el Acto 1 la deja. */
+const LIGHT_START = 48
+const LIGHT_FULL = 14
+
+function absorbAtDistance(dist: number) {
+  const light = gsap.utils.clamp(0, 1, 1 - (dist - LIGHT_FULL) / (LIGHT_START - LIGHT_FULL))
+  return gsap.utils.clamp(0, 1, (light - 0.65) / 0.35)
+}
+
+/** Mismo aspecto que el destello del Acto 1 con colorT = 1 (ya virado a amarillo) */
+const HOT_SPARK_BG = 'radial-gradient(circle, #facc15 0%, #facc15 55%, #facc15 100%)'
+const HOT_SPARK_SHADOW = [
+  '0 0 8px 3px rgba(250,204,21,0.95)',
+  '0 0 22px 8px rgba(250,204,21,0.75)',
+  '0 0 40px 14px rgba(250,204,21,0.47)',
+].join(', ')
+const HOT_GLOW_BG =
+  'radial-gradient(circle, rgba(250,204,21,0.65) 0%, rgba(250,204,21,0.45) 42%, transparent 72%)'
 
 type TrailPoint = { x: number; y: number; born: number }
 
@@ -77,6 +108,14 @@ function buildPathFromPhrases(
   }))
 }
 
+/**
+ * ACTO 1 (el deseo) + ACTO 2 (la idea) como una sola secuencia.
+ *
+ * El Acto 2 no es otra sección: es la última pantalla del Acto 1. Cuando el destello
+ * llega a la cabeza, la sección se congela (pin) en ese mismo cuadro y desde ahí la
+ * luz sube, la silueta se hunde y los puntos dibujan la constelación. Por eso la
+ * silueta, el ENTRA y la estela son los del Acto 1: no hay nada duplicado.
+ */
 export function ActSpark() {
   const eyeMaskId = useId().replace(/:/g, '')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -86,8 +125,8 @@ export function ActSpark() {
   const glowRef = useRef<HTMLDivElement>(null)
   const litRef = useRef<HTMLDivElement>(null)
   const enterRef = useRef<HTMLParagraphElement>(null)
+  const exitWorldRef = useRef<HTMLDivElement>(null)
   const silWrapRef = useRef<HTMLDivElement>(null)
-  const silSvgRef = useRef<SVGSVGElement>(null)
   const rimRef = useRef<HTMLDivElement>(null)
   const headAnchorRef = useRef<HTMLDivElement>(null)
   const trailCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -95,10 +134,32 @@ export function ActSpark() {
   const trailPts = useRef<TrailPoint[]>([])
   const animRef = useRef<{ tl?: gsap.core.Timeline; st?: ScrollTrigger }>({})
 
+  // Acto 2 — viven dentro de la sección del Acto 1, en su última pantalla
+  const lightStageRef = useRef<HTMLDivElement>(null)
+  const riseSparkRef = useRef<HTMLDivElement>(null)
+  const riseGlowRef = useRef<HTMLDivElement>(null)
+  const ideaStageRef = useRef<HTMLDivElement>(null)
+  const splitLayerRef = useRef<HTMLDivElement>(null)
+  const ideaLayoutRef = useRef<HTMLDivElement>(null)
+  const constStageRef = useRef<HTMLDivElement>(null)
+  const constSvgRef = useRef<SVGSVGElement>(null)
+  const copyRef = useRef<HTMLDivElement>(null)
+
   const [points, setPoints] = useState<SparkWaypoint[]>(() => loadSparkPath() ?? DEFAULT_SPARK_PATH)
   const [placeMode, setPlaceMode] = useState(false)
   const [selected, setSelected] = useState<number | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
+
+  const [map, setMap] = useState<ConstellationMap>(
+    () => loadConstellation() ?? DEFAULT_CONSTELLATION,
+  )
+  const [overlaySrc, setOverlaySrc] = useState<string | null>('/pc-ref.png')
+  const [overlayOpacity, setOverlayOpacity] = useState(28)
+  const [overlayOk, setOverlayOk] = useState(false)
+  const [starPlaceMode, setStarPlaceMode] = useState(false)
+  const [connectMode, setConnectMode] = useState(false)
+  const [starSelected, setStarSelected] = useState<number | null>(null)
+  const [starDragIndex, setStarDragIndex] = useState<number | null>(null)
 
   const rebuildFromText = useCallback(() => {
     const section = sectionRef.current
@@ -145,11 +206,19 @@ export function ActSpark() {
     const glow = glowRef.current
     const lit = litRef.current
     const enter = enterRef.current
+    const exitWorld = exitWorldRef.current
     const silWrap = silWrapRef.current
-    const silSvg = silSvgRef.current
     const rim = rimRef.current
     const headAnchor = headAnchorRef.current
     const canvas = trailCanvasRef.current
+    const lightStage = lightStageRef.current
+    const riseSpark = riseSparkRef.current
+    const riseGlow = riseGlowRef.current
+    const ideaStage = ideaStageRef.current
+    const splitLayer = splitLayerRef.current
+    const ideaLayout = ideaLayoutRef.current
+    const constSvg = constSvgRef.current
+    const copy = copyRef.current
     if (
       !root ||
       !section ||
@@ -158,13 +227,42 @@ export function ActSpark() {
       !glow ||
       !lit ||
       !enter ||
+      !exitWorld ||
       !silWrap ||
-      !silSvg ||
       !rim ||
       !headAnchor ||
-      !canvas
+      !canvas ||
+      !lightStage ||
+      !riseSpark ||
+      !riseGlow ||
+      !ideaStage ||
+      !splitLayer ||
+      !ideaLayout ||
+      !constSvg ||
+      !copy
     )
       return
+
+    const stars = constSvg.querySelectorAll<SVGCircleElement>('[data-star]')
+    const lines = constSvg.querySelectorAll<SVGLineElement>('[data-edge]')
+    const shots = splitLayer.querySelectorAll<HTMLDivElement>('[data-shot]')
+
+    /** El relevo no se hace al congelar la sección sino justo antes de que la luz
+     *  suba: el Acto 1 va con scrub, así que al congelar todavía viene en camino a
+     *  la cabeza. Esperar a este punto de la línea de tiempo garantiza que ambas
+     *  luces estén en la misma coordenada cuando se hace el cambio. */
+    const HANDOFF_AT = 0.11
+    let ideaTl: gsap.core.Timeline | undefined
+    const inClimax = () => (ideaTl?.progress() ?? 0) >= HANDOFF_AT
+
+    /** Las capas del Acto 2 miden exactamente una pantalla real, no 100vh de CSS:
+     *  así coinciden al pixel con el encuadre en el que se congela la sección. */
+    const sizeStages = () => {
+      const h = `${window.innerHeight}px`
+      lightStage.style.height = h
+      ideaStage.style.height = h
+    }
+    sizeStages()
 
     const resizeCanvas = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -179,6 +277,12 @@ export function ActSpark() {
     }
     resizeCanvas()
 
+    /** La luz activa: la del recorrido, o la que sube en el clímax */
+    const activeSpark = () => (inClimax() ? riseSpark : spark)
+
+    /** La máscara se queda anclada a la luz del recorrido, que al final del Acto 1
+     *  reposa dentro de la cabeza. Si siguiera a la luz que sube, al acercarse
+     *  volvería a encender "Y que al final..." justo antes de apagarlo. */
     const applyMask = () => {
       const sRect = section.getBoundingClientRect()
       const sp = spark.getBoundingClientRect()
@@ -246,9 +350,10 @@ export function ActSpark() {
 
     const sampleTrail = () => {
       const now = performance.now()
+      const source = activeSpark()
       const sRect = section.getBoundingClientRect()
-      const sp = spark.getBoundingClientRect()
-      if (getComputedStyle(spark).opacity === '0' || sp.width === 0) {
+      const sp = source.getBoundingClientRect()
+      if (getComputedStyle(source).opacity === '0' || sp.width === 0) {
         paintTrail(now)
         return
       }
@@ -317,16 +422,13 @@ export function ActSpark() {
       const sy = sp.top + sp.height / 2
       const dist = Math.hypot(sx - (hr.left + hr.width / 2), sy - (hr.top + hr.height / 2))
 
-      const lightStart = 48
-      const lightFull = 14
-      const latchDist = 18
       const st = animRef.current.st
       const progress = st?.progress ?? 0
 
       const light = gsap.utils.clamp(
         0,
         1,
-        1 - (dist - lightFull) / (lightStart - lightFull),
+        1 - (dist - LIGHT_FULL) / (LIGHT_START - LIGHT_FULL),
       )
 
       // Color → amarillo ENTRA desde el penúltimo punto hasta el último
@@ -365,7 +467,9 @@ export function ActSpark() {
       gsap.set(spark, { autoAlpha: 1 - absorb * 0.92, scale: 1 - absorb * 0.8 })
       gsap.set(glow, { autoAlpha: 1 - absorb * 0.25, scale: 1 + absorb * 0.45 })
 
-      if (dist <= latchDist && !enterLatched) {
+      // ENTRA hasta que la luz ya está dentro: absorb llega a 1 y se queda ahí,
+      // así que el orden es siempre entrar primero y aparecer después.
+      if (absorb >= 1 && !enterLatched) {
         enterLatched = true
         latchedAtProgress = progress
         showEnter()
@@ -378,9 +482,41 @@ export function ActSpark() {
     }
 
     const onFrame = () => {
+      if (inClimax()) {
+        // El relevo: la luz del recorrido se apaga y manda la del clímax
+        gsap.set([spark, glow], { autoAlpha: 0 })
+        gsap.set(lightStage, { autoAlpha: 1 })
+      } else {
+        gsap.set(lightStage, { autoAlpha: 0 })
+        updateClimaxFromSpark()
+      }
       applyMask()
       sampleTrail()
-      updateClimaxFromSpark()
+    }
+
+    /** Última posición del trazo, traducida a la caja del clímax (misma anchura que la sección) */
+    const handoffLeft = () => `${points[points.length - 1]?.x ?? 50}%`
+    const handoffTop = () => {
+      const sectionH = section.offsetHeight
+      const stageH = lightStage.offsetHeight || window.innerHeight
+      const y = ((points[points.length - 1]?.y ?? 90) / 100) * sectionH - (sectionH - stageH)
+      return `${(y / stageH) * 100}%`
+    }
+
+    /** Cuánto lleva absorbida la luz al terminar el trazo. No se puede fijar a mano:
+     *  depende de dónde caiga el último punto respecto a la cabeza, y ese punto es
+     *  dato editable. Reproduce la misma cuenta que updateClimaxFromSpark. */
+    const handoffAbsorb = () => {
+      const last = points[points.length - 1]
+      if (!last) return 0
+      const sRect = section.getBoundingClientRect()
+      const hr = headAnchor.getBoundingClientRect()
+      // La silueta puede llevar ya algo de hundimiento; se descuenta para medir
+      // contra la cabeza donde estaba al terminar el trazo.
+      const sunk = Number(gsap.getProperty(exitWorld, 'y')) || 0
+      const dx = (last.x / 100) * sRect.width - (hr.left + hr.width / 2 - sRect.left)
+      const dy = (last.y / 100) * sRect.height - (hr.top + hr.height / 2 - sRect.top - sunk)
+      return absorbAtDistance(Math.hypot(dx, dy))
     }
 
     const ctx = gsap.context(() => {
@@ -394,14 +530,35 @@ export function ActSpark() {
       gsap.set([spark, glow], {
         motionPath: { path, align: path, alignOrigin: [0.5, 0.5], start: 0, end: 0 },
       })
+
+      gsap.set(exitWorld, { y: 0 })
+      gsap.set(lightStage, { autoAlpha: 0 })
+      gsap.set([riseSpark, riseGlow], { xPercent: -50, yPercent: -50 })
+      gsap.set(shots, {
+        left: '50%',
+        top: '50%',
+        xPercent: -50,
+        yPercent: -50,
+        autoAlpha: 0,
+        scale: 0.5,
+      })
+      gsap.set(stars, { scale: 0, transformOrigin: '50% 50%', opacity: 0 })
+      gsap.set(lines, { strokeDashoffset: 1, opacity: 0.12 })
+      gsap.set(ideaLayout, { autoAlpha: 0 })
+      gsap.set(copy.children, { opacity: 0 })
+
       onFrame()
 
+      /* ========== ACTO 1 — el recorrido del destello ==========
+         El final del trazo cae a una pantalla del fondo de la sección: ese es
+         el cuadro que el Acto 2 congela. El end va en px para que el pin del
+         Acto 2 no altere el ritmo de las frases. */
       const tl = gsap.timeline({
         defaults: { ease: 'none' },
         scrollTrigger: {
-          trigger: root,
+          trigger: section,
           start: 'top top',
-          end: 'bottom bottom',
+          end: () => `+=${Math.max(1, section.offsetHeight - window.innerHeight)}`,
           scrub: 0.55,
           invalidateOnRefresh: true,
           onUpdate: onFrame,
@@ -420,10 +577,116 @@ export function ActSpark() {
       )
 
       animRef.current = { tl, st: tl.scrollTrigger ?? undefined }
+
+      /* ========== ACTO 2 — la idea ==========
+         Arranca en el instante exacto en que termina el trazo: la sección se
+         congela con la silueta y el ENTRA donde ya estaban. */
+      ideaTl = gsap.timeline({
+        defaults: { ease: 'none' },
+        scrollTrigger: {
+          trigger: section,
+          start: 'bottom bottom',
+          end: () => `+=${window.innerHeight * IDEA_SCREENS}`,
+          pin: true,
+          pinSpacing: true,
+          scrub: 0.85,
+          invalidateOnRefresh: true,
+        },
+      })
+
+      // La luz retoma justo donde quedó: misma posición y mismo estado absorbido
+      ideaTl.set(
+        [riseSpark, riseGlow],
+        { left: handoffLeft, top: handoffTop, xPercent: -50, yPercent: -50 },
+        0,
+      )
+
+      ideaTl.to(
+        enter,
+        { autoAlpha: 0, filter: 'blur(8px)', scale: 0.96, duration: 0.1, ease: 'power2.in' },
+        0.1,
+      )
+
+      // Sube al centro, saliendo de la cabeza, mientras la silueta se hunde
+      ideaTl.fromTo(
+        riseSpark,
+        {
+          autoAlpha: () => 1 - handoffAbsorb() * 0.92,
+          scale: () => 1 - handoffAbsorb() * 0.8,
+        },
+        { autoAlpha: 1, scale: 1.25, duration: 0.3, ease: 'power2.out' },
+        0.12,
+      )
+      ideaTl.fromTo(
+        riseGlow,
+        {
+          autoAlpha: () => 1 - handoffAbsorb() * 0.25,
+          scale: () => 1 + handoffAbsorb() * 0.45,
+        },
+        { autoAlpha: 1, scale: 1.6, duration: 0.3, ease: 'power2.out' },
+        0.12,
+      )
+      ideaTl.to(
+        [riseSpark, riseGlow],
+        { left: '50%', top: '50%', duration: 0.34, ease: 'power2.out' },
+        0.12,
+      )
+
+      ideaTl.to(exitWorld, { y: '75vh', duration: 0.32, ease: 'power1.in' }, 0.14)
+      ideaTl.to(lit, { autoAlpha: 0, duration: 0.16 }, 0.14)
+      ideaTl.to(rim, { autoAlpha: 0, duration: 0.1 }, 0.16)
+      ideaTl.to(silWrap, { autoAlpha: 0, duration: 0.16 }, 0.32)
+
+      ideaTl.to(ideaLayout, { autoAlpha: 1, duration: 0.06 }, 0.52)
+
+      // Se desarma: la luz se rompe en puntos que vuelan a cada estrella
+      ideaTl.to(
+        [riseSpark, riseGlow],
+        { autoAlpha: 0, scale: 0.3, duration: 0.06, ease: 'power2.in' },
+        0.54,
+      )
+      ideaTl.set(shots, { left: '50%', top: '50%', autoAlpha: 1, scale: 1 }, 0.54)
+
+      const n = Math.max(stars.length, 1)
+      const idea = ideaTl
+      shots.forEach((node, i) => {
+        const star = stars[i]
+        if (!star) return
+        idea.to(
+          node,
+          {
+            left: () => {
+              const sr = ideaStage.getBoundingClientRect()
+              const st = star.getBoundingClientRect()
+              return `${(((st.left + st.width / 2 - sr.left) / sr.width) * 100).toFixed(2)}%`
+            },
+            top: () => {
+              const sr = ideaStage.getBoundingClientRect()
+              const st = star.getBoundingClientRect()
+              return `${(((st.top + st.height / 2 - sr.top) / sr.height) * 100).toFixed(2)}%`
+            },
+            autoAlpha: 0,
+            scale: 0.55,
+            duration: 0.22,
+            ease: 'power2.out',
+          },
+          0.56 + (i / n) * 0.08,
+        )
+        idea.to(
+          star,
+          { scale: 1, opacity: 1, duration: 0.08, ease: 'power2.out' },
+          0.72 + (i / n) * 0.08,
+        )
+      })
+
+      ideaTl.to(lines, { strokeDashoffset: 0, opacity: 0.85, stagger: 0.018, duration: 0.28 }, 0.82)
+      ideaTl.to(copy.children, { opacity: 1, stagger: 0.05, duration: 0.18 }, 0.92)
+
       ScrollTrigger.refresh()
     }, root)
 
     const onResize = () => {
+      sizeStages()
       resizeCanvas()
       ScrollTrigger.refresh()
     }
@@ -435,7 +698,7 @@ export function ActSpark() {
       gsap.ticker.remove(onFrame)
       ctx.revert()
     }
-  }, [points])
+  }, [points, map])
 
   const sectionToPct = (clientX: number, clientY: number): SparkWaypoint | null => {
     const section = sectionRef.current
@@ -447,17 +710,49 @@ export function ActSpark() {
     }
   }
 
+  const constStageToPct = (clientX: number, clientY: number) => {
+    const stage = constStageRef.current
+    if (!stage) return null
+    const r = stage.getBoundingClientRect()
+    return {
+      x: Math.round((((clientX - r.left) / r.width) * 100) * 10) / 10,
+      y: Math.round((((clientY - r.top) / r.height) * 100) * 10) / 10,
+    }
+  }
+
   const onSectionPointerDown = (e: React.PointerEvent) => {
     if (!import.meta.env.DEV) return
-    if ((e.target as HTMLElement).closest('[data-path-handle]')) return
+    const target = e.target as HTMLElement
+    if (target.closest('[data-path-handle]')) return
+    if (target.closest('[data-idea-stage]')) return
 
     if (placeMode) {
       const p = sectionToPct(e.clientX, e.clientY)
       if (!p) return
       setPoints((prev) => [...prev, p])
       setPlaceMode(false)
-      return
     }
+  }
+
+  const onSectionPointerMove = (e: React.PointerEvent) => {
+    if (dragIndex !== null) {
+      const p = sectionToPct(e.clientX, e.clientY)
+      if (p) setPoints((prev) => prev.map((pt, i) => (i === dragIndex ? p : pt)))
+    }
+    if (starDragIndex !== null) {
+      const p = constStageToPct(e.clientX, e.clientY)
+      if (p) {
+        setMap((prev) => ({
+          ...prev,
+          stars: prev.stars.map((s, i) => (i === starDragIndex ? p : s)),
+        }))
+      }
+    }
+  }
+
+  const onSectionPointerUp = () => {
+    setDragIndex(null)
+    setStarDragIndex(null)
   }
 
   const onHandlePointerDown = (index: number, e: React.PointerEvent) => {
@@ -468,16 +763,48 @@ export function ActSpark() {
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
   }
 
-  const onHandlePointerMove = (e: React.PointerEvent) => {
-    if (dragIndex === null) return
-    const p = sectionToPct(e.clientX, e.clientY)
+  const onConstStagePointerDown = (e: React.PointerEvent) => {
+    if (!import.meta.env.DEV) return
+    e.stopPropagation()
+    if ((e.target as HTMLElement).closest('[data-star-handle]')) return
+    if (!starPlaceMode) return
+    const p = constStageToPct(e.clientX, e.clientY)
     if (!p) return
-    setPoints((prev) => prev.map((pt, i) => (i === dragIndex ? p : pt)))
+    setMap((prev) => ({ ...prev, stars: [...prev.stars, p] }))
+    setStarPlaceMode(false)
   }
 
-  const onHandlePointerUp = () => setDragIndex(null)
+  const onStarClick = (index: number, e: React.PointerEvent) => {
+    e.stopPropagation()
+    if (!import.meta.env.DEV) return
+    if (connectMode) {
+      if (starSelected === null) {
+        setStarSelected(index)
+        return
+      }
+      if (starSelected === index) {
+        setStarSelected(null)
+        return
+      }
+      const a = Math.min(starSelected, index)
+      const b = Math.max(starSelected, index)
+      setMap((prev) => {
+        const exists = prev.edges.some(([x, y]) => x === a && y === b)
+        const edges: Edge[] = exists
+          ? prev.edges.filter(([x, y]) => !(x === a && y === b))
+          : [...prev.edges, [a, b]]
+        return { ...prev, edges }
+      })
+      setStarSelected(null)
+      return
+    }
+    setStarSelected(index)
+    setStarDragIndex(index)
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
 
   return (
+    /* ACTO 1 + ACTO 2 INICIAN */
     <div ref={rootRef} className="relative">
       <section
         ref={sectionRef}
@@ -485,8 +812,8 @@ export function ActSpark() {
         className="relative min-h-[320vh] overflow-hidden bg-void pb-[40vh]"
         aria-label="Acto I — El deseo"
         onPointerDown={onSectionPointerDown}
-        onPointerMove={onHandlePointerMove}
-        onPointerUp={onHandlePointerUp}
+        onPointerMove={onSectionPointerMove}
+        onPointerUp={onSectionPointerUp}
       >
         <svg
           className="pointer-events-none absolute inset-0 z-0 h-full w-full"
@@ -525,6 +852,25 @@ export function ActSpark() {
           aria-hidden
         />
 
+        {/* La misma luz, ya en la última pantalla: mismo tamaño y mismo z que la del
+            recorrido, para que salga por detrás de la cabeza igual que entró. */}
+        <div
+          ref={lightStageRef}
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-screen"
+          aria-hidden
+        >
+          <div
+            ref={riseGlowRef}
+            className="absolute h-28 w-28 rounded-full will-change-transform sm:h-36 sm:w-36"
+            style={{ background: HOT_GLOW_BG, filter: 'blur(14px)' }}
+          />
+          <div
+            ref={riseSparkRef}
+            className="absolute h-2.5 w-2.5 rounded-full will-change-transform sm:h-3 sm:w-3"
+            style={{ background: HOT_SPARK_BG, boxShadow: HOT_SPARK_SHADOW }}
+          />
+        </div>
+
         <div
           ref={litRef}
           className="pointer-events-none absolute inset-0 z-[2]"
@@ -562,43 +908,174 @@ export function ActSpark() {
           ))}
         </div>
 
-        <div
-          ref={silWrapRef}
-          className="pointer-events-none absolute left-1/2 top-[278vh] z-[3] w-[min(42vw,200px)] -translate-x-1/2 sm:w-[220px]"
-        >
-          {/* Luz detrás: se ve a través de los ojos-ventana */}
+        {/* Silueta y ENTRA del Acto 1. En el Acto 2 se hunden juntos, sin redibujarse. */}
+        <div ref={exitWorldRef} className="pointer-events-none absolute inset-0 z-[3]">
           <div
-            ref={rimRef}
-            className="absolute left-1/2 top-[6%] h-[72%] w-[82%] -translate-x-1/2 rounded-[50%] bg-spark/50 blur-2xl"
-            aria-hidden
-          />
-          <div ref={headAnchorRef} className="absolute left-1/2 top-[18%] size-2 -translate-x-1/2" />
-          <svg ref={silSvgRef} viewBox="0 0 200 220" className="relative w-full" aria-hidden>
-            <defs>
-              <mask id={eyeMaskId} maskUnits="userSpaceOnUse">
-                <rect x="0" y="0" width="200" height="220" fill="white" />
-                {/* Agujeros = ventanas al fondo */}
-                <ellipse cx="86" cy="68" rx="3.5" ry="3.8" fill="black" />
-                <ellipse cx="114" cy="68" rx="3.5" ry="3.8" fill="black" />
-              </mask>
-            </defs>
-            <g mask={`url(#${eyeMaskId})`}>
-              <circle cx="100" cy="72" r="42" fill="#09090b" stroke="none" />
-              <path
-                d="M28 210 C28 150, 55 128, 100 128 C145 128, 172 150, 172 210"
-                fill="#09090b"
-                stroke="none"
-              />
-            </g>
-          </svg>
+            ref={silWrapRef}
+            className="absolute left-1/2 top-[278vh] w-[min(42vw,200px)] -translate-x-1/2 sm:w-[220px]"
+          >
+            {/* Luz detrás: se ve a través de los ojos-ventana */}
+            <div
+              ref={rimRef}
+              className="absolute left-1/2 top-[6%] h-[72%] w-[82%] -translate-x-1/2 rounded-[50%] bg-spark/50 blur-2xl"
+              aria-hidden
+            />
+            <div
+              ref={headAnchorRef}
+              className="absolute left-1/2 top-[18%] size-2 -translate-x-1/2"
+            />
+            <svg viewBox="0 0 200 220" className="relative w-full" aria-hidden>
+              <defs>
+                <mask id={eyeMaskId} maskUnits="userSpaceOnUse">
+                  <rect x="0" y="0" width="200" height="220" fill="white" />
+                  {/* Agujeros = ventanas al fondo */}
+                  <ellipse cx="86" cy="68" rx="3.5" ry="3.8" fill="black" />
+                  <ellipse cx="114" cy="68" rx="3.5" ry="3.8" fill="black" />
+                </mask>
+              </defs>
+              <g mask={`url(#${eyeMaskId})`}>
+                <circle cx="100" cy="72" r="42" fill="#09090b" stroke="none" />
+                <path
+                  d="M28 210 C28 150, 55 128, 100 128 C145 128, 172 150, 172 210"
+                  fill="#09090b"
+                  stroke="none"
+                />
+              </g>
+            </svg>
+          </div>
+
+          <p
+            ref={enterRef}
+            className="absolute left-1/2 top-[266vh] -translate-x-1/2 font-display text-4xl font-extrabold tracking-[0.32em] text-spark sm:text-6xl md:text-7xl"
+          >
+            ENTRA
+          </p>
         </div>
 
-        <p
-          ref={enterRef}
-          className="pointer-events-none absolute left-1/2 top-[266vh] z-[4] -translate-x-1/2 font-display text-4xl font-extrabold tracking-[0.32em] text-spark sm:text-6xl md:text-7xl"
+        {/* ACTO 2 — ocupa la última pantalla de la sección, la que queda congelada */}
+        <div
+          ref={ideaStageRef}
+          id="idea"
+          data-idea-stage
+          role="region"
+          aria-label="Acto II — La idea"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-screen"
         >
-          ENTRA
-        </p>
+          <div ref={splitLayerRef} className="pointer-events-none absolute inset-0 z-[1]">
+            {map.stars.map((_, i) => (
+              <div
+                key={`shot-${i}`}
+                data-shot
+                className="absolute h-2 w-2 rounded-full bg-spark sm:h-2.5 sm:w-2.5"
+                style={{ boxShadow: '0 0 10px 3px rgba(250,204,21,0.85)' }}
+              />
+            ))}
+          </div>
+
+          <div
+            ref={ideaLayoutRef}
+            className="absolute inset-0 z-[2] mx-auto grid max-w-6xl items-center gap-8 px-6 md:px-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16"
+          >
+            <div
+              ref={constStageRef}
+              className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center"
+              onPointerDown={onConstStagePointerDown}
+            >
+              {overlayOk && overlaySrc && import.meta.env.DEV && (
+                <img
+                  src={overlaySrc}
+                  alt=""
+                  className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                  style={{ opacity: overlayOpacity / 100 }}
+                />
+              )}
+              <img
+                src="/pc-ref.png"
+                alt=""
+                className="hidden"
+                onLoad={() => {
+                  if (overlaySrc === '/pc-ref.png') setOverlayOk(true)
+                }}
+                onError={() => {
+                  if (overlaySrc === '/pc-ref.png') setOverlayOk(false)
+                }}
+              />
+              <svg
+                ref={constSvgRef}
+                viewBox="0 0 100 100"
+                className="absolute inset-0 h-full w-full overflow-visible"
+                aria-hidden
+              >
+                {map.edges.map(([a, b], i) => {
+                  const sa = map.stars[a]
+                  const sb = map.stars[b]
+                  if (!sa || !sb) return null
+                  return (
+                    <line
+                      key={`edge-${i}`}
+                      data-edge
+                      x1={sa.x}
+                      y1={sa.y}
+                      x2={sb.x}
+                      y2={sb.y}
+                      stroke="#facc15"
+                      strokeWidth="0.28"
+                      strokeLinecap="round"
+                      pathLength={1}
+                      strokeDasharray="1"
+                      strokeDashoffset={1}
+                    />
+                  )
+                })}
+                {map.stars.map((s, i) => (
+                  <circle
+                    key={`star-${i}`}
+                    data-star
+                    cx={s.x}
+                    cy={s.y}
+                    r="0.85"
+                    fill="#fffef8"
+                    style={{ filter: 'drop-shadow(0 0 1.2px rgba(250,204,21,0.9))' }}
+                  />
+                ))}
+              </svg>
+              {import.meta.env.DEV &&
+                map.stars.map((s, i) => (
+                  <button
+                    key={`h-${i}`}
+                    type="button"
+                    data-star-handle
+                    aria-label={`Estrella ${i + 1}`}
+                    onPointerDown={(e) => onStarClick(i, e)}
+                    className={`pointer-events-auto absolute z-10 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-void ${
+                      starSelected === i ? 'bg-white scale-125' : 'bg-spark'
+                    }`}
+                    style={{ left: `${s.x}%`, top: `${s.y}%` }}
+                  />
+                ))}
+            </div>
+
+            <div ref={copyRef} className="pointer-events-auto relative">
+              <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
+                {IDEA_COPY.kicker}
+              </p>
+              <h2 className="font-display text-4xl font-bold tracking-tight text-paper text-balance sm:text-5xl">
+                {IDEA_COPY.title}
+              </h2>
+              <p className="mt-5 max-w-md text-base leading-relaxed text-mist sm:text-lg">
+                {IDEA_COPY.lead}
+              </p>
+              <ul className="mt-10 space-y-5">
+                {IDEA_COPY.items.map((item) => (
+                  <li key={item.title}>
+                    <p className="font-display text-lg text-paper">{item.title}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-mist">{item.body}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
 
         {/* Handles de edición (solo dev) */}
         {import.meta.env.DEV &&
@@ -632,6 +1109,27 @@ export function ActSpark() {
           onSelect={setSelected}
         />
       )}
+
+      {import.meta.env.DEV && (
+        <ConstellationEditor
+          map={map}
+          onChange={setMap}
+          overlaySrc={overlaySrc}
+          overlayOpacity={overlayOpacity}
+          onOverlaySrc={(src) => {
+            setOverlaySrc(src)
+            setOverlayOk(Boolean(src))
+          }}
+          onOverlayOpacity={setOverlayOpacity}
+          placeMode={starPlaceMode}
+          onPlaceModeChange={setStarPlaceMode}
+          connectMode={connectMode}
+          onConnectModeChange={setConnectMode}
+          selected={starSelected}
+          onSelect={setStarSelected}
+        />
+      )}
     </div>
+    /* ACTO 1 + ACTO 2 TERMINAN */
   )
 }

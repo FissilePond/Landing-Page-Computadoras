@@ -1,6 +1,5 @@
 import { PLACEHOLDERS } from './data/content'
 import { ActSpark } from './components/acts/ActSpark'
-import { ActIdea } from './components/acts/ActIdea'
 import { ActUnbox } from './components/acts/ActUnbox'
 import { ActPlayground } from './components/acts/ActPlayground'
 import { ActConfig } from './components/acts/ActConfig'
@@ -27,8 +26,10 @@ export default function App() {
       </header>
 
       <main>
+        {/* ===== ACTO 1 — El deseo · ACTO 2 — La idea (una sola secuencia) ===== */}
         <ActSpark />
-        <ActIdea />
+        {/* ===== ACTO 1 + ACTO 2 (terminan) ===== */}
+
         <ActUnbox />
         <ActPlayground />
         <ActConfig />
