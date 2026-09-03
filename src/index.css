@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #09090b;
+  --color-spark: #facc15;
+  --color-spark-dim: #a16207;
+  --color-fog: #18181b;
+  --color-steel: #27272a;
+  --color-mist: #a1a1aa;
+  --color-paper: #fafafa;
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Outfit", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: auto;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--color-void);
+    color: var(--color-paper);
+    font-family: var(--font-body);
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-spark) 40%, transparent);
+    color: var(--color-paper);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
