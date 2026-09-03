@@ -244,7 +244,8 @@ export function ActSpark() {
       return
 
     const stars = constSvg.querySelectorAll<SVGCircleElement>('[data-star]')
-    const lines = constSvg.querySelectorAll<SVGLineElement>('[data-edge]')
+    const edgeCores = constSvg.querySelectorAll<SVGLineElement>('[data-edge-core]')
+    const edgeGlows = constSvg.querySelectorAll<SVGLineElement>('[data-edge-glow]')
     const shots = splitLayer.querySelectorAll<HTMLDivElement>('[data-shot]')
 
     /** El relevo no se hace al congelar la sección sino justo antes de que la luz
@@ -467,15 +468,15 @@ export function ActSpark() {
       gsap.set(spark, { autoAlpha: 1 - absorb * 0.92, scale: 1 - absorb * 0.8 })
       gsap.set(glow, { autoAlpha: 1 - absorb * 0.25, scale: 1 + absorb * 0.45 })
 
-      // ENTRA hasta que la luz ya está dentro: absorb llega a 1 y se queda ahí,
-      // así que el orden es siempre entrar primero y aparecer después.
       if (absorb >= 1 && !enterLatched) {
         enterLatched = true
         latchedAtProgress = progress
         showEnter()
       }
 
-      if (enterLatched && progress < latchedAtProgress - 0.012) {
+      // Solo soltar ENTRA si realmente subes el Acto 1. El pin hace que el
+      // progreso tiemble ~1% en scroll lento; 0.012 era demasiado justo.
+      if (enterLatched && progress < latchedAtProgress - 0.08) {
         enterLatched = false
         hideEnter()
       }
@@ -543,9 +544,19 @@ export function ActSpark() {
         scale: 0.5,
       })
       gsap.set(stars, { scale: 0, transformOrigin: '50% 50%', opacity: 0 })
-      gsap.set(lines, { strokeDashoffset: 1, opacity: 0.12 })
+      const prepEdge = (el: SVGLineElement, opacity: number) => {
+        const len = Math.max(el.getTotalLength(), 0.001)
+        gsap.set(el, {
+          attr: { 'stroke-dasharray': len, 'stroke-dashoffset': len },
+          strokeDasharray: len,
+          strokeDashoffset: len,
+          opacity,
+        })
+      }
+      edgeCores.forEach((el) => prepEdge(el, 1))
+      edgeGlows.forEach((el) => prepEdge(el, 0.38))
       gsap.set(ideaLayout, { autoAlpha: 0 })
-      gsap.set(copy.children, { opacity: 0 })
+      gsap.set(copy.querySelectorAll('[data-copy]'), { opacity: 0 })
 
       onFrame()
 
@@ -603,8 +614,13 @@ export function ActSpark() {
 
       ideaTl.to(
         enter,
-        { autoAlpha: 0, filter: 'blur(8px)', scale: 0.96, duration: 0.1, ease: 'power2.in' },
-        0.1,
+        {
+          autoAlpha: 0,
+          filter: 'blur(10px)',
+          duration: 0.32,
+          ease: 'none',
+        },
+        0.14,
       )
 
       // Sube al centro, saliendo de la cabeza, mientras la silueta se hunde
@@ -679,8 +695,25 @@ export function ActSpark() {
         )
       })
 
-      ideaTl.to(lines, { strokeDashoffset: 0, opacity: 0.85, stagger: 0.018, duration: 0.28 }, 0.82)
-      ideaTl.to(copy.children, { opacity: 1, stagger: 0.05, duration: 0.18 }, 0.92)
+      const DRAW = 0.055
+      const GAP = 0.038
+      edgeCores.forEach((core, i) => {
+        const glow = edgeGlows[i]
+        const at = 0.82 + i * GAP
+        const drawTo = (el: SVGLineElement) => {
+          const len = () => Math.max(el.getTotalLength(), 0.001)
+          ideaTl.fromTo(
+            el,
+            { strokeDasharray: len, strokeDashoffset: len },
+            { strokeDashoffset: 0, duration: DRAW, ease: 'none' },
+            at,
+          )
+        }
+        drawTo(core)
+        if (glow) drawTo(glow)
+      })
+      ideaTl.to(copy.querySelector('[data-copy-a]'), { opacity: 1, duration: 0.22, ease: 'none' }, 0.82)
+      ideaTl.to(copy.querySelector('[data-copy-b]'), { opacity: 1, duration: 0.22, ease: 'none' }, 0.96)
 
       ScrollTrigger.refresh()
     }, root)
@@ -1006,25 +1039,45 @@ export function ActSpark() {
                 className="absolute inset-0 h-full w-full overflow-visible"
                 aria-hidden
               >
+                <defs>
+                  <filter
+                    id={`${eyeMaskId}-edgeglow`}
+                    x="-80%"
+                    y="-80%"
+                    width="260%"
+                    height="260%"
+                  >
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="0.32" />
+                  </filter>
+                </defs>
                 {map.edges.map(([a, b], i) => {
                   const sa = map.stars[a]
                   const sb = map.stars[b]
                   if (!sa || !sb) return null
+                  const shared = {
+                    x1: sa.x,
+                    y1: sa.y,
+                    x2: sb.x,
+                    y2: sb.y,
+                    stroke: '#facc15',
+                    strokeLinecap: 'round' as const,
+                  }
                   return (
-                    <line
-                      key={`edge-${i}`}
-                      data-edge
-                      x1={sa.x}
-                      y1={sa.y}
-                      x2={sb.x}
-                      y2={sb.y}
-                      stroke="#facc15"
-                      strokeWidth="0.28"
-                      strokeLinecap="round"
-                      pathLength={1}
-                      strokeDasharray="1"
-                      strokeDashoffset={1}
-                    />
+                    <g key={`edge-${i}`}>
+                      <line
+                        data-edge-glow
+                        {...shared}
+                        strokeWidth="0.62"
+                        opacity={0.38}
+                        filter={`url(#${eyeMaskId}-edgeglow)`}
+                      />
+                      <line
+                        data-edge-core
+                        {...shared}
+                        strokeWidth="0.28"
+                        opacity={1}
+                      />
+                    </g>
                   )
                 })}
                 {map.stars.map((s, i) => (
@@ -1056,16 +1109,18 @@ export function ActSpark() {
             </div>
 
             <div ref={copyRef} className="pointer-events-auto relative">
-              <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
-                {IDEA_COPY.kicker}
-              </p>
-              <h2 className="font-display text-4xl font-bold tracking-tight text-paper text-balance sm:text-5xl">
-                {IDEA_COPY.title}
-              </h2>
-              <p className="mt-5 max-w-md text-base leading-relaxed text-mist sm:text-lg">
-                {IDEA_COPY.lead}
-              </p>
-              <ul className="mt-10 space-y-5">
+              <div data-copy data-copy-a>
+                <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
+                  {IDEA_COPY.kicker}
+                </p>
+                <h2 className="font-display text-4xl font-bold tracking-tight text-paper text-balance sm:text-5xl">
+                  {IDEA_COPY.title}
+                </h2>
+                <p className="mt-5 max-w-md text-base leading-relaxed text-mist sm:text-lg">
+                  {IDEA_COPY.lead}
+                </p>
+              </div>
+              <ul data-copy data-copy-b className="mt-10 space-y-5">
                 {IDEA_COPY.items.map((item) => (
                   <li key={item.title}>
                     <p className="font-display text-lg text-paper">{item.title}</p>
