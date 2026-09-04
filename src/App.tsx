@@ -1,6 +1,5 @@
 import { PLACEHOLDERS } from './data/content'
 import { ActSpark } from './components/acts/ActSpark'
-import { ActUnbox } from './components/acts/ActUnbox'
 import { ActPlayground, type ConfigurationSummary } from './components/acts/ActPlayground'
 import { ActConfig } from './components/acts/ActConfig'
 import { useState } from 'react'
@@ -21,7 +20,7 @@ export default function App() {
           <a href="#idea" className="opacity-70 transition hover:opacity-100">
             Servicios
           </a>
-          <a href="#playground" className="opacity-70 transition hover:opacity-100">
+          <a href="#configurador" className="opacity-70 transition hover:opacity-100">
             Armado
           </a>
           <a href="#contacto" className="opacity-70 transition hover:opacity-100">
@@ -31,11 +30,9 @@ export default function App() {
       </header>
 
       <main>
-        {/* ===== ACTO 1 — El deseo · ACTO 2 — La idea (una sola secuencia) ===== */}
+        {/* ===== ACTO 1–3 (deseo → idea → plano + rasgado) ===== */}
         <ActSpark />
-        {/* ===== ACTO 1 + ACTO 2 (terminan) ===== */}
-
-        <ActUnbox />
+        {/* ===== ACTO 4 — playground ===== */}
         <ActPlayground onConfigurationChange={setConfiguration} />
         {!configurationComplete && (
           <div className="relative z-10 mx-auto mb-12 max-w-6xl px-6 text-center text-sm text-paper/80 mt-8">

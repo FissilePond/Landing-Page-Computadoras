@@ -38,6 +38,27 @@ export const IDEA_COPY = {
   ],
 } as const
 
+/** Copy del Acto III: el plan (blueprint / acuerdo) */
+export const PLAN_COPY = {
+  kicker: 'Acto III',
+  title: 'El plan quedó',
+  lead: 'La idea ya tiene reglas. El taller puede empezar.',
+  items: [
+    {
+      title: 'Uso',
+      body: 'Para qué la quieres — y qué tiene que aguantar.',
+    },
+    {
+      title: 'Piezas',
+      body: 'Compatibilidad cerrada: nada a ciegas.',
+    },
+    {
+      title: 'Tiempo',
+      body: 'Cuándo la tienes lista, sin humo.',
+    },
+  ],
+} as const
+
 export const SERVICES = [
   {
     title: 'Armado de PCs',

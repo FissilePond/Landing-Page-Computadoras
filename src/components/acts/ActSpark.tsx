@@ -2,7 +2,7 @@ import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
-import { IDEA_COPY } from '../../data/content'
+import { IDEA_COPY, PLAN_COPY } from '../../data/content'
 import {
   DEFAULT_SPARK_PATH,
   loadSparkPath,
@@ -42,8 +42,25 @@ const TRAIL_LIFE_MS = 1200
 const TRAIL_STEP = 0.12
 const TRAIL_MAX_POINTS = 160
 
-/** Pantallas de scroll que dura el Acto 2 con la sección ya congelada */
-const IDEA_SCREENS = 3.8
+/** Pantallas de scroll: Acto 2 (idea) + Acto 3 (plano) + rasgado → Acto 4 */
+const IDEA_SCREENS = 4.8
+const PLAN_SCREENS = 1.9
+const TEAR_SCREENS = 1.6
+const PIN_SCREENS = IDEA_SCREENS + PLAN_SCREENS + TEAR_SCREENS
+
+/** Tiempos en la timeline pineada (Acto 2 ocupa 0→1; el resto se escala al scroll).
+ *  PLAN_START > 1 = aire de lectura del copy del Acto 2 antes del morph. */
+const PLAN_START = 1.32
+const PLAN_MORPH = PLAN_START
+const PLAN_COPY_AT = PLAN_START + (PLAN_SCREENS / IDEA_SCREENS) * 0.32
+const PLAN_STAMP_AT = PLAN_START + (PLAN_SCREENS / IDEA_SCREENS) * 0.62
+const TEAR_START = PLAN_START + PLAN_SCREENS / IDEA_SCREENS
+const TEAR_END = TEAR_START + TEAR_SCREENS / IDEA_SCREENS
+
+const BLUEPRINT_BG = '#0b1f3a'
+const BLUEPRINT_GRID =
+  'repeating-linear-gradient(0deg, rgba(255,255,255,0.11) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(255,255,255,0.11) 0 1px, transparent 1px 28px)'
+const STAMP_LIME = '#a3e635'
 
 /** Curva con la que la luz se apaga al acercarse a la cabeza. La usan los dos actos:
  *  el Acto 2 la necesita para arrancar en el mismo estado en que el Acto 1 la deja. */
@@ -109,12 +126,14 @@ function buildPathFromPhrases(
 }
 
 /**
- * ACTO 1 (el deseo) + ACTO 2 (la idea) como una sola secuencia.
+ * ACTO 1 (el deseo) + ACTO 2 (la idea) + ACTO 3 (el plan) como una sola secuencia.
  *
  * El Acto 2 no es otra sección: es la última pantalla del Acto 1. Cuando el destello
  * llega a la cabeza, la sección se congela (pin) en ese mismo cuadro y desde ahí la
- * luz sube, la silueta se hunde y los puntos dibujan la constelación. Por eso la
- * silueta, el ENTRA y la estela son los del Acto 1: no hay nada duplicado.
+ * luz sube, la silueta se hunde y los puntos dibujan la constelación. El Acto 3
+ * re-skinea esa constelación a blueprint, sella APROBADO y rasga el papel hacia
+ * el Acto 4. Por eso la silueta, el ENTRA y la estela son los del Acto 1: no hay
+ * nada duplicado.
  */
 export function ActSpark() {
   const eyeMaskId = useId().replace(/:/g, '')
@@ -144,6 +163,11 @@ export function ActSpark() {
   const constStageRef = useRef<HTMLDivElement>(null)
   const constSvgRef = useRef<SVGSVGElement>(null)
   const copyRef = useRef<HTMLDivElement>(null)
+  const blueprintBgRef = useRef<HTMLDivElement>(null)
+  const planCopyRef = useRef<HTMLDivElement>(null)
+  const stampRef = useRef<HTMLDivElement>(null)
+  const tearEdgeRef = useRef<HTMLDivElement>(null)
+  const paperSheetRef = useRef<HTMLDivElement>(null)
 
   const [points, setPoints] = useState<SparkWaypoint[]>(() => loadSparkPath() ?? DEFAULT_SPARK_PATH)
   const [placeMode, setPlaceMode] = useState(false)
@@ -153,9 +177,9 @@ export function ActSpark() {
   const [map, setMap] = useState<ConstellationMap>(
     () => loadConstellation() ?? DEFAULT_CONSTELLATION,
   )
-  const [overlaySrc, setOverlaySrc] = useState<string | null>('/pc-ref.png')
-  const [overlayOpacity, setOverlayOpacity] = useState(28)
-  const [overlayOk, setOverlayOk] = useState(false)
+  const [overlaySrc, setOverlaySrc] = useState<string | null>(null)
+  const [overlayOpacity, setOverlayOpacity] = useState(0)
+  const [, setOverlayOk] = useState(false)
   const [starPlaceMode, setStarPlaceMode] = useState(false)
   const [connectMode, setConnectMode] = useState(false)
   const [starSelected, setStarSelected] = useState<number | null>(null)
@@ -219,6 +243,11 @@ export function ActSpark() {
     const ideaLayout = ideaLayoutRef.current
     const constSvg = constSvgRef.current
     const copy = copyRef.current
+    const blueprintBg = blueprintBgRef.current
+    const planCopy = planCopyRef.current
+    const stamp = stampRef.current
+    const tearEdge = tearEdgeRef.current
+    const paperSheet = paperSheetRef.current
     if (
       !root ||
       !section ||
@@ -239,7 +268,12 @@ export function ActSpark() {
       !splitLayer ||
       !ideaLayout ||
       !constSvg ||
-      !copy
+      !copy ||
+      !blueprintBg ||
+      !planCopy ||
+      !stamp ||
+      !tearEdge ||
+      !paperSheet
     )
       return
 
@@ -254,7 +288,8 @@ export function ActSpark() {
      *  luces estén en la misma coordenada cuando se hace el cambio. */
     const HANDOFF_AT = 0.11
     let ideaTl: gsap.core.Timeline | undefined
-    const inClimax = () => (ideaTl?.progress() ?? 0) >= HANDOFF_AT
+    // time() — no progress(): la timeline se alarga con el Acto 3/rasgado
+    const inClimax = () => (ideaTl?.time() ?? 0) >= HANDOFF_AT
 
     /** Las capas del Acto 2 miden exactamente una pantalla real, no 100vh de CSS:
      *  así coinciden al pixel con el encuadre en el que se congela la sección. */
@@ -504,7 +539,7 @@ export function ActSpark() {
         pinOn &&
         enterLatched &&
         !enterRescuedForPin &&
-        (ideaTl?.progress() ?? 0) < 0.12 &&
+        (ideaTl?.time() ?? 0) < 0.12 &&
         (enterHideTween || (gsap.getProperty(enter, 'autoAlpha') as number) < 0.05)
       ) {
         enterRescuedForPin = true
@@ -585,6 +620,18 @@ export function ActSpark() {
       edgeGlows.forEach((el) => prepEdge(el, 0.38))
       gsap.set(ideaLayout, { autoAlpha: 0 })
       gsap.set(copy.querySelectorAll('[data-copy]'), { opacity: 0 })
+      gsap.set(blueprintBg, { autoAlpha: 0 })
+      gsap.set(planCopy.querySelectorAll('[data-plan]'), { opacity: 0 })
+      gsap.set(stamp, {
+        autoAlpha: 0,
+        scale: 1.06,
+        rotate: -13,
+        filter: 'blur(3px)',
+        transformOrigin: '50% 50%',
+      })
+      gsap.set(tearEdge, { autoAlpha: 0 })
+      gsap.set(paperSheet, { y: '0%' })
+      ideaStage.style.setProperty('--tear-y', '100')
 
       onFrame()
 
@@ -625,7 +672,7 @@ export function ActSpark() {
         scrollTrigger: {
           trigger: section,
           start: 'bottom bottom',
-          end: () => `+=${window.innerHeight * IDEA_SCREENS}`,
+          end: () => `+=${window.innerHeight * PIN_SCREENS}`,
           pin: true,
           pinSpacing: true,
           scrub: 0.85,
@@ -730,7 +777,7 @@ export function ActSpark() {
         const at = 0.82 + i * GAP
         const drawTo = (el: SVGLineElement) => {
           const len = () => Math.max(el.getTotalLength(), 0.001)
-          ideaTl.fromTo(
+          idea.fromTo(
             el,
             { strokeDasharray: len, strokeDashoffset: len },
             { strokeDashoffset: 0, duration: DRAW, ease: 'none' },
@@ -740,8 +787,74 @@ export function ActSpark() {
         drawTo(core)
         if (glow) drawTo(glow)
       })
-      ideaTl.to(copy.querySelector('[data-copy-a]'), { opacity: 1, duration: 0.22, ease: 'none' }, 0.82)
-      ideaTl.to(copy.querySelector('[data-copy-b]'), { opacity: 1, duration: 0.22, ease: 'none' }, 0.96)
+      idea.to(copy.querySelector('[data-copy-a]'), { opacity: 1, duration: 0.22, ease: 'none' }, 0.72)
+      idea.to(copy.querySelector('[data-copy-b]'), { opacity: 1, duration: 0.24, ease: 'none' }, 0.84)
+
+      /* ========== ACTO 3 — el plan (blueprint) ========== */
+      const morphDur = Math.max(0.12, PLAN_COPY_AT - PLAN_MORPH)
+      idea.to(copy.querySelectorAll('[data-copy]'), { opacity: 0, duration: morphDur * 0.55, ease: 'none' }, PLAN_MORPH)
+      idea.to(stars, { opacity: 0, scale: 0.4, duration: morphDur * 0.7, ease: 'none' }, PLAN_MORPH)
+      idea.to(
+        section.querySelectorAll('[data-star-handle]'),
+        { autoAlpha: 0, duration: morphDur * 0.4, ease: 'none' },
+        PLAN_MORPH,
+      )
+      idea.to(edgeGlows, { opacity: 0, duration: morphDur * 0.5, ease: 'none' }, PLAN_MORPH)
+      idea.to(
+        edgeCores,
+        { attr: { stroke: '#f4f7fb' }, stroke: '#f4f7fb', duration: morphDur, ease: 'none' },
+        PLAN_MORPH,
+      )
+      idea.to(blueprintBg, { autoAlpha: 1, duration: morphDur, ease: 'none' }, PLAN_MORPH)
+      idea.to(
+        planCopy.querySelectorAll('[data-plan]'),
+        { opacity: 1, duration: 0.2, ease: 'none', stagger: 0.06 },
+        PLAN_COPY_AT,
+      )
+
+      // Sello APROBADO — presión suave (sin bounce cartoon)
+      idea.fromTo(
+        stamp,
+        { autoAlpha: 0, scale: 1.06, rotate: -13, filter: 'blur(3px)' },
+        {
+          autoAlpha: 1,
+          scale: 0.985,
+          rotate: -11.5,
+          filter: 'blur(0px)',
+          duration: 0.16,
+          ease: 'none',
+        },
+        PLAN_STAMP_AT,
+      )
+      idea.to(
+        stamp,
+        { scale: 1, rotate: -12, duration: 0.08, ease: 'none' },
+        PLAN_STAMP_AT + 0.16,
+      )
+
+      /* ========== Rasgado Trevor Noah — papel sube, Acto 4 queda abajo ========== */
+      const tearDur = TEAR_END - TEAR_START
+      idea.set(tearEdge, { autoAlpha: 1 }, TEAR_START)
+      idea.fromTo(
+        paperSheet,
+        { y: '0%' },
+        {
+          y: '-108%',
+          duration: tearDur,
+          ease: 'none',
+          onUpdate: function (this: gsap.core.Tween) {
+            const p = this.progress()
+            ideaStage.style.setProperty('--tear-y', String(100 - p * 100))
+          },
+        },
+        TEAR_START,
+      )
+      idea.to(
+        tearEdge,
+        { autoAlpha: 0, duration: Math.min(0.12, tearDur * 0.15), ease: 'none' },
+        TEAR_END - Math.min(0.12, tearDur * 0.15),
+      )
+      idea.set([ideaStage, paperSheet, tearEdge], { autoAlpha: 0 }, TEAR_END)
 
       ScrollTrigger.refresh()
     }, root)
@@ -759,7 +872,37 @@ export function ActSpark() {
       gsap.ticker.remove(onFrame)
       ctx.revert()
     }
-  }, [points, map])
+  }, [points])
+
+  /** Modo edición constelación: no depende del scroll; fuerza escena visible y clickeable */
+  const constellationEditing = import.meta.env.DEV && (starPlaceMode || connectMode)
+
+  useLayoutEffect(() => {
+    if (!import.meta.env.DEV) return
+    const ideaStage = ideaStageRef.current
+    const ideaLayout = ideaLayoutRef.current
+    const constSvg = constSvgRef.current
+    const section = sectionRef.current
+    if (!ideaStage || !ideaLayout || !constSvg || !section) return
+
+    if (!constellationEditing) return
+
+    gsap.set(ideaStage, { autoAlpha: 1 })
+    gsap.set(ideaLayout, { autoAlpha: 1 })
+    gsap.set(constSvg.querySelectorAll('[data-star]'), {
+      scale: 1,
+      opacity: 1,
+      transformOrigin: '50% 50%',
+    })
+    gsap.set(constSvg.querySelectorAll('[data-edge-core]'), {
+      opacity: 1,
+      strokeDashoffset: 0,
+    })
+    gsap.set(constSvg.querySelectorAll('[data-edge-glow]'), { opacity: 0.35, strokeDashoffset: 0 })
+    gsap.set(section.querySelectorAll('[data-star-handle]'), { autoAlpha: 1 })
+
+    ideaStage.scrollIntoView({ block: 'end', behavior: 'smooth' })
+  }, [constellationEditing, map.stars.length, map.edges.length])
 
   const sectionToPct = (clientX: number, clientY: number): SparkWaypoint | null => {
     const section = sectionRef.current
@@ -839,6 +982,7 @@ export function ActSpark() {
     e.stopPropagation()
     if (!import.meta.env.DEV) return
     if (connectMode) {
+      e.preventDefault()
       if (starSelected === null) {
         setStarSelected(index)
         return
@@ -1013,150 +1157,221 @@ export function ActSpark() {
           </p>
         </div>
 
-        {/* ACTO 2 — ocupa la última pantalla de la sección, la que queda congelada */}
+        {/* ACTO 2–3 — última pantalla: idea → plano → rasgado */}
         <div
           ref={ideaStageRef}
           id="idea"
           data-idea-stage
           role="region"
-          aria-label="Acto II — La idea"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-screen"
+          aria-label="Acto II–III — La idea y el plan"
+          className={`absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible ${
+            constellationEditing ? 'pointer-events-auto' : 'pointer-events-none'
+          }`}
+          style={{ ['--tear-y' as string]: 100 }}
         >
-          <div ref={splitLayerRef} className="pointer-events-none absolute inset-0 z-[1]">
-            {map.stars.map((_, i) => (
-              <div
-                key={`shot-${i}`}
-                data-shot
-                className="absolute h-2 w-2 rounded-full bg-spark sm:h-2.5 sm:w-2.5"
-                style={{ boxShadow: '0 0 10px 3px rgba(250,204,21,0.85)' }}
-              />
-            ))}
-          </div>
-
           <div
-            ref={ideaLayoutRef}
-            className="absolute inset-0 z-[2] mx-auto grid max-w-6xl items-center gap-8 px-6 md:px-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16"
+            ref={paperSheetRef}
+            className="absolute inset-0 overflow-visible will-change-transform"
           >
             <div
-              ref={constStageRef}
-              className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center"
-              onPointerDown={onConstStagePointerDown}
-            >
-              {overlayOk && overlaySrc && import.meta.env.DEV && (
-                <img
-                  src={overlaySrc}
-                  alt=""
-                  className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-                  style={{ opacity: overlayOpacity / 100 }}
+              ref={blueprintBgRef}
+              className="absolute inset-0"
+              style={{
+                backgroundColor: BLUEPRINT_BG,
+                backgroundImage: BLUEPRINT_GRID,
+              }}
+              aria-hidden
+            />
+
+            <div ref={splitLayerRef} className="pointer-events-none absolute inset-0 z-[1]">
+              {map.stars.map((_, i) => (
+                <div
+                  key={`shot-${i}`}
+                  data-shot
+                  className="absolute h-2 w-2 rounded-full bg-spark sm:h-2.5 sm:w-2.5"
+                  style={{ boxShadow: '0 0 10px 3px rgba(250,204,21,0.85)' }}
                 />
-              )}
-              <img
-                src="/pc-ref.png"
-                alt=""
-                className="hidden"
-                onLoad={() => {
-                  if (overlaySrc === '/pc-ref.png') setOverlayOk(true)
-                }}
-                onError={() => {
-                  if (overlaySrc === '/pc-ref.png') setOverlayOk(false)
-                }}
-              />
-              <svg
-                ref={constSvgRef}
-                viewBox="0 0 100 100"
-                className="absolute inset-0 h-full w-full overflow-visible"
-                aria-hidden
-              >
-                <defs>
-                  <filter
-                    id={`${eyeMaskId}-edgeglow`}
-                    x="-80%"
-                    y="-80%"
-                    width="260%"
-                    height="260%"
-                  >
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="0.32" />
-                  </filter>
-                </defs>
-                {map.edges.map(([a, b], i) => {
-                  const sa = map.stars[a]
-                  const sb = map.stars[b]
-                  if (!sa || !sb) return null
-                  const shared = {
-                    x1: sa.x,
-                    y1: sa.y,
-                    x2: sb.x,
-                    y2: sb.y,
-                    stroke: '#facc15',
-                    strokeLinecap: 'round' as const,
-                  }
-                  return (
-                    <g key={`edge-${i}`}>
-                      <line
-                        data-edge-glow
-                        {...shared}
-                        strokeWidth="0.62"
-                        opacity={0.38}
-                        filter={`url(#${eyeMaskId}-edgeglow)`}
-                      />
-                      <line
-                        data-edge-core
-                        {...shared}
-                        strokeWidth="0.28"
-                        opacity={1}
-                      />
-                    </g>
-                  )
-                })}
-                {map.stars.map((s, i) => (
-                  <circle
-                    key={`star-${i}`}
-                    data-star
-                    cx={s.x}
-                    cy={s.y}
-                    r="0.85"
-                    fill="#fffef8"
-                    style={{ filter: 'drop-shadow(0 0 1.2px rgba(250,204,21,0.9))' }}
-                  />
-                ))}
-              </svg>
-              {import.meta.env.DEV &&
-                map.stars.map((s, i) => (
-                  <button
-                    key={`h-${i}`}
-                    type="button"
-                    data-star-handle
-                    aria-label={`Estrella ${i + 1}`}
-                    onPointerDown={(e) => onStarClick(i, e)}
-                    className={`pointer-events-auto absolute z-10 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-void ${
-                      starSelected === i ? 'bg-white scale-125' : 'bg-spark'
-                    }`}
-                    style={{ left: `${s.x}%`, top: `${s.y}%` }}
-                  />
-                ))}
+              ))}
             </div>
 
-            <div ref={copyRef} className="pointer-events-auto relative">
-              <div data-copy data-copy-a>
-                <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
-                  {IDEA_COPY.kicker}
-                </p>
-                <h2 className="font-display text-4xl font-bold tracking-tight text-paper text-balance sm:text-5xl">
-                  {IDEA_COPY.title}
-                </h2>
-                <p className="mt-5 max-w-md text-base leading-relaxed text-mist sm:text-lg">
-                  {IDEA_COPY.lead}
-                </p>
+            <div
+              ref={ideaLayoutRef}
+              className="absolute inset-0 z-[2] mx-auto grid max-w-6xl items-center gap-8 px-6 md:px-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16"
+            >
+              <div
+                ref={constStageRef}
+                className={`relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center ${
+                  constellationEditing ? 'pointer-events-auto cursor-crosshair ring-1 ring-spark/40' : ''
+                }`}
+                onPointerDown={onConstStagePointerDown}
+              >
+                {import.meta.env.DEV && overlaySrc && (
+                  <img
+                    src={overlaySrc}
+                    alt=""
+                    className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                    style={{ opacity: overlayOpacity / 100 }}
+                  />
+                )}
+                <svg
+                  ref={constSvgRef}
+                  viewBox="0 0 100 100"
+                  className="absolute inset-0 h-full w-full overflow-visible"
+                  aria-hidden
+                >
+                  <defs>
+                    <filter
+                      id={`${eyeMaskId}-edgeglow`}
+                      x="-80%"
+                      y="-80%"
+                      width="260%"
+                      height="260%"
+                    >
+                      <feGaussianBlur in="SourceGraphic" stdDeviation="0.32" />
+                    </filter>
+                  </defs>
+                  {map.edges.map(([a, b], i) => {
+                    const sa = map.stars[a]
+                    const sb = map.stars[b]
+                    if (!sa || !sb) return null
+                    const shared = {
+                      x1: sa.x,
+                      y1: sa.y,
+                      x2: sb.x,
+                      y2: sb.y,
+                      stroke: '#facc15',
+                      strokeLinecap: 'round' as const,
+                    }
+                    return (
+                      <g key={`edge-${i}`}>
+                        <line
+                          data-edge-glow
+                          {...shared}
+                          strokeWidth="0.62"
+                          opacity={0.38}
+                          filter={`url(#${eyeMaskId}-edgeglow)`}
+                        />
+                        <line
+                          data-edge-core
+                          {...shared}
+                          strokeWidth="0.28"
+                          opacity={1}
+                        />
+                      </g>
+                    )
+                  })}
+                  {map.stars.map((s, i) => (
+                    <circle
+                      key={`star-${i}`}
+                      data-star
+                      cx={s.x}
+                      cy={s.y}
+                      r="0.85"
+                      fill="#fffef8"
+                      style={{ filter: 'drop-shadow(0 0 1.2px rgba(250,204,21,0.9))' }}
+                    />
+                  ))}
+                </svg>
+                {import.meta.env.DEV &&
+                  map.stars.map((s, i) => (
+                    <button
+                      key={`h-${i}`}
+                      type="button"
+                      data-star-handle
+                      aria-label={`Estrella ${i + 1}`}
+                      onPointerDown={(e) => onStarClick(i, e)}
+                      className={`pointer-events-auto absolute z-20 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-void shadow ${
+                        starSelected === i ? 'scale-125 bg-white' : 'bg-spark'
+                      }`}
+                      style={{ left: `${s.x}%`, top: `${s.y}%` }}
+                    />
+                  ))}
               </div>
-              <ul data-copy data-copy-b className="mt-10 space-y-5">
-                {IDEA_COPY.items.map((item) => (
-                  <li key={item.title}>
-                    <p className="font-display text-lg text-paper">{item.title}</p>
-                    <p className="mt-1 text-sm leading-relaxed text-mist">{item.body}</p>
-                  </li>
-                ))}
-              </ul>
+
+              <div className="pointer-events-auto relative min-h-[20rem]">
+                <div ref={copyRef} className="relative">
+                  <div data-copy data-copy-a>
+                    <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
+                      {IDEA_COPY.kicker}
+                    </p>
+                    <h2 className="font-display text-4xl font-bold tracking-tight text-paper text-balance sm:text-5xl">
+                      {IDEA_COPY.title}
+                    </h2>
+                    <p className="mt-5 max-w-md text-base leading-relaxed text-mist sm:text-lg">
+                      {IDEA_COPY.lead}
+                    </p>
+                  </div>
+                  <ul data-copy data-copy-b className="mt-10 space-y-5">
+                    {IDEA_COPY.items.map((item) => (
+                      <li key={item.title}>
+                        <p className="font-display text-lg text-paper">{item.title}</p>
+                        <p className="mt-1 text-sm leading-relaxed text-mist">{item.body}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div ref={planCopyRef} className="pointer-events-none absolute inset-0">
+                  <div data-plan>
+                    <p className="mb-3 text-xs font-medium tracking-[0.3em] uppercase text-white/70">
+                      {PLAN_COPY.kicker}
+                    </p>
+                    <h2 className="font-display text-4xl font-bold tracking-tight text-white text-balance sm:text-5xl">
+                      {PLAN_COPY.title}
+                    </h2>
+                    <p className="mt-5 max-w-md text-base leading-relaxed text-white/75 sm:text-lg">
+                      {PLAN_COPY.lead}
+                    </p>
+                  </div>
+                  <ul data-plan className="mt-10 space-y-5">
+                    {PLAN_COPY.items.map((item) => (
+                      <li key={item.title}>
+                        <p className="font-display text-lg text-white">{item.title}</p>
+                        <p className="mt-1 text-sm leading-relaxed text-white/65">{item.body}</p>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div
+                    ref={stampRef}
+                    className="pointer-events-none absolute right-0 bottom-2 sm:bottom-6 md:right-2"
+                    aria-hidden
+                  >
+                    <div
+                      className="rounded-sm border-[3px] px-3 py-2 font-display text-2xl font-extrabold tracking-[0.18em] uppercase sm:text-3xl md:text-4xl"
+                      style={{
+                        color: STAMP_LIME,
+                        borderColor: STAMP_LIME,
+                        boxShadow: `inset 0 0 0 2px ${STAMP_LIME}`,
+                        opacity: 0.92,
+                      }}
+                    >
+                      APROBADO
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Borde rasgado: franja horizontal (rasgado1) enmascara el papel crema */}
+            <div
+              ref={tearEdgeRef}
+              className="pointer-events-none absolute inset-x-[-1%] bottom-0 z-[9] h-[56px] w-[102%] sm:h-[68px] md:h-[78px]"
+              aria-hidden
+              style={{
+                transform: 'translateY(48%)',
+                backgroundColor: '#f4f0e8',
+                boxShadow: '0 8px 16px rgba(0,0,0,0.45)',
+                WebkitMaskImage: 'url(/tears/rasgado1.png)',
+                maskImage: 'url(/tears/rasgado1.png)',
+                WebkitMaskSize: '100% 100%',
+                maskSize: '100% 100%',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center',
+              }}
+            />
           </div>
         </div>
 
@@ -1213,6 +1428,6 @@ export function ActSpark() {
         />
       )}
     </div>
-    /* ACTO 1 + ACTO 2 TERMINAN */
+    /* ACTO 1 + ACTO 2 + ACTO 3 TERMINAN */
   )
 }

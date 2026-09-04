@@ -64,16 +64,16 @@ export function ActCta() {
       <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,0.9fr)_1.1fr] lg:gap-16">
         <div
           data-cta
-          className="relative mx-auto aspect-square w-full max-w-[280px] sm:max-w-[320px]"
-          aria-hidden
+          className="relative mx-auto w-full max-w-[300px] sm:max-w-[360px]"
         >
-          <div className="absolute inset-[8%] rounded-2xl border border-white/10 bg-gradient-to-br from-steel via-fog to-void shadow-[0_0_40px_rgba(250,204,21,0.12)]" />
-          <div className="absolute inset-[18%] rounded-xl border border-spark/30 bg-void/80" />
-          <div className="absolute inset-x-[28%] top-[22%] h-[3px] rounded-full bg-spark/80 shadow-[0_0_12px_rgba(250,204,21,0.8)]" />
-          <div className="absolute inset-x-[32%] bottom-[20%] top-[30%] rounded-lg border border-spark/20 bg-[linear-gradient(180deg,rgba(250,204,21,0.12),transparent)]" />
-          <p className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[10px] tracking-[0.25em] text-mist uppercase">
-            PC isométrica · placeholder
-          </p>
+          <div className="relative aspect-[3/4] overflow-hidden">
+            <img
+              src="/pc-hero.png"
+              alt={`${PLACEHOLDERS.brand} — PC armada`}
+              className="h-full w-full object-contain object-center drop-shadow-[0_0_40px_rgba(56,189,248,0.22)]"
+              draggable={false}
+            />
+          </div>
         </div>
 
         <div>

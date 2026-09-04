@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   clearConstellation,
   saveConstellation,
@@ -37,30 +37,86 @@ export function ConstellationEditor({
 }: Props) {
   const [open, setOpen] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  const historyRef = useRef<ConstellationMap[]>([])
+
+  const pushHistory = (snapshot: ConstellationMap) => {
+    historyRef.current = [
+      ...historyRef.current.slice(-39),
+      {
+        stars: snapshot.stars.map((s) => ({ ...s })),
+        edges: snapshot.edges.map((e) => [e[0], e[1]] as Edge),
+      },
+    ]
+  }
 
   useEffect(() => {
     if (!toast) return
-    const t = window.setTimeout(() => setToast(null), 2000)
+    const t = window.setTimeout(() => setToast(null), 2200)
     return () => window.clearTimeout(t)
   }, [toast])
 
+  // (auto-plasmar desactivado: las estrellas/trayectorias ya viven en constellation.ts)
+
   if (!import.meta.env.DEV) return null
+
+  const apply = (next: ConstellationMap, note?: string) => {
+    pushHistory(map)
+    onChange(next)
+    if (note) setToast(note)
+  }
+
+  const undo = () => {
+    const prev = historyRef.current.pop()
+    if (!prev) {
+      setToast('Nada que deshacer')
+      return
+    }
+    onChange(prev)
+    onSelect(null)
+    setToast('Deshecho')
+  }
 
   const persist = () => {
     saveConstellation(map)
     setToast('Guardado en localStorage')
   }
 
+  const clearEdges = () => {
+    if (map.edges.length === 0) {
+      setToast('No hay líneas')
+      return
+    }
+    apply({ stars: map.stars, edges: [] }, 'Líneas eliminadas')
+    saveConstellation({ stars: map.stars, edges: [] })
+  }
+
+  const saveToProject = async () => {
+    const payload = { stars: map.stars, edges: map.edges }
+    try {
+      const res = await fetch('/__dev/save-constellation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = (await res.json()) as { ok: boolean; error?: string; stars?: number; edges?: number }
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'falló')
+      saveConstellation(payload)
+      clearConstellation()
+      setToast(`Fijado en código (${data.stars}★ ${data.edges ?? map.edges.length} líneas)`)
+    } catch (err) {
+      setToast(`No se pudo fijar: ${String(err)}`)
+    }
+  }
+
   const copyJson = async () => {
-    await navigator.clipboard.writeText(JSON.stringify(map, null, 2))
-    setToast('JSON copiado — cuando digas “ya”, lo pegamos en código')
+    await navigator.clipboard.writeText(JSON.stringify({ stars: map.stars, edges: map.edges }, null, 2))
+    setToast('JSON copiado')
   }
 
   const reset = () => {
+    apply({ stars: [], edges: [] }, 'Mapa vacío')
     clearConstellation()
-    onChange({ stars: [], edges: [] })
     onSelect(null)
-    setToast('Mapa vacío')
   }
 
   const removeStar = (index: number) => {
@@ -68,12 +124,12 @@ export function ConstellationEditor({
     const edges: Edge[] = map.edges
       .filter(([a, b]) => a !== index && b !== index)
       .map(([a, b]) => [a > index ? a - 1 : a, b > index ? b - 1 : b] as Edge)
-    onChange({ stars, edges })
+    apply({ stars, edges })
     onSelect(null)
   }
 
   const removeEdge = (index: number) => {
-    onChange({ ...map, edges: map.edges.filter((_, i) => i !== index) })
+    apply({ ...map, edges: map.edges.filter((_, i) => i !== index) })
   }
 
   return (
@@ -90,10 +146,18 @@ export function ConstellationEditor({
         <div className="max-h-[72vh] overflow-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-2xl backdrop-blur">
           <p className="mb-2 text-[10px] tracking-[0.2em] text-spark uppercase">Acto II · estrellas</p>
           <p className="mb-3 text-[11px] leading-relaxed text-mist">
-            1) Pon la foto o el line art en <code className="text-paper">public/pc-ref.png</code> o
-            cárgala aquí. 2) Marca estrellas sobre las esquinas. 3) Conecta pares. Ese mapa sirve
-            después para el plano (Acto 3).
+            Estrellas OK → conecta con cuidado. Usa <strong className="text-paper">Deshacer</strong> o{' '}
+            <strong className="text-paper">Quitar líneas</strong> si falla una unión.
           </p>
+          {(placeMode || connectMode) && (
+            <p className="mb-3 rounded-lg border border-spark/30 bg-spark/10 px-2 py-1.5 text-[11px] text-spark">
+              {placeMode
+                ? 'Click en la PC para colocar una estrella.'
+                : selected === null
+                  ? 'Conectar: click en la 1ª estrella.'
+                  : `Conectar: 1ª = ★${selected + 1}. Click en la 2ª (o otra vez la misma para cancelar).`}
+            </p>
+          )}
 
           <label className="mb-3 block text-mist">
             Overlay
@@ -146,7 +210,10 @@ export function ConstellationEditor({
               type="button"
               onClick={() => {
                 onConnectModeChange(!connectMode)
-                if (!connectMode) onPlaceModeChange(false)
+                if (!connectMode) {
+                  onPlaceModeChange(false)
+                  onSelect(null)
+                }
               }}
               className={`rounded-full px-2.5 py-1 ${
                 connectMode ? 'bg-spark text-void' : 'border border-white/15'
@@ -156,10 +223,31 @@ export function ConstellationEditor({
             </button>
             <button
               type="button"
+              onClick={undo}
+              className="rounded-full border border-white/15 px-2.5 py-1"
+            >
+              Deshacer
+            </button>
+            <button
+              type="button"
+              onClick={clearEdges}
+              className="rounded-full border border-white/15 px-2.5 py-1"
+            >
+              Quitar líneas
+            </button>
+            <button
+              type="button"
               onClick={persist}
               className="rounded-full border border-spark/50 px-2.5 py-1 text-spark"
             >
               Guardar
+            </button>
+            <button
+              type="button"
+              onClick={saveToProject}
+              className="rounded-full border border-spark/50 bg-spark/15 px-2.5 py-1 text-spark"
+            >
+              Fijar estrellas en código
             </button>
             <button
               type="button"
@@ -175,7 +263,7 @@ export function ConstellationEditor({
 
           <p className="mb-1 text-mist">
             {map.stars.length} estrellas · {map.edges.length} líneas
-            {selected !== null ? ` · sel. ${selected + 1}` : ''}
+            {selected !== null ? ` · sel. ★${selected + 1}` : ''}
           </p>
           <ul className="mb-2 max-h-28 space-y-1 overflow-auto">
             {map.edges.map((e, i) => (
