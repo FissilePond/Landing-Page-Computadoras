@@ -13,6 +13,31 @@ export const PLACEHOLDERS = {
   ],
 } as const
 
+/** Copy del Acto II: la idea (aún no el plano / transacción) */
+export const IDEA_COPY = {
+  kicker: 'Acto II',
+  title: 'La idea toma forma',
+  lead: 'Todavía no es un pedido. Es la silueta de lo que quieres crear — o de lo que hay que recuperar.',
+  items: [
+    {
+      title: 'Armado',
+      body: 'Una máquina nueva, pensada para lo que vas a hacer con ella.',
+    },
+    {
+      title: 'Reparación',
+      body: 'La que ya tienes: devolverle el potencial que se quedó a medias.',
+    },
+    {
+      title: 'Cotización',
+      body: 'Bajar la idea a piezas y números, sin compromiso todavía.',
+    },
+    {
+      title: 'Garantía 1 mes',
+      body: 'Cuando se materialice, el trabajo se sostiene el primer mes.',
+    },
+  ],
+} as const
+
 export const SERVICES = [
   {
     title: 'Armado de PCs',
