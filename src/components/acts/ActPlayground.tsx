@@ -3,7 +3,8 @@ import './act4/styles.css'
 import { initPcWorkbench, type Category, type PcWorkbench, type ScenePart } from './act4/main.ts'
 import { ProductModelCanvas, ProductModelViewer, type ProductModel } from './act4/models.tsx'
 
-type ComponentName = 'Motherboard' | 'Procesador' | 'RAM' | 'Almacenamiento' | 'PSU' | 'GPU' | 'Ventiladores'
+export type ComponentName = 'Motherboard' | 'Procesador' | 'RAM' | 'Almacenamiento' | 'PSU' | 'GPU' | 'Ventiladores'
+export type ConfigurationSummary = Partial<Record<ComponentName, string>> & { total: number }
 type Product = ScenePart & { name: string; details: string; id: string; price: number; socket?: string; memoryType?: string; interface?: string; capacity?: number; watts?: number }
 
 const componentOrder: ComponentName[] = ['Motherboard', 'Procesador', 'RAM', 'Almacenamiento', 'PSU', 'GPU', 'Ventiladores']
@@ -19,7 +20,7 @@ const products: Record<ComponentName, Product[]> = {
     Ventiladores: [{ id: 'rgb-fans-3-pack', name: 'Kit de 3 ventiladores RGB', details: '120 mm • Flujo de aire optimizado', count: 3, price: 799, color: '#0f172a', accent: '#8b5cf6' }, { id: 'argb-fans-5-pack', name: 'Kit de 5 ventiladores ARGB', details: '120 mm • Alto rendimiento', count: 5, price: 1299, color: '#0f172a', accent: '#8b5cf6' }],
 }
 
-export function ActPlayground() {
+export function ActPlayground({ onConfigurationChange }: { onConfigurationChange?: (summary: ConfigurationSummary) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workbenchRef = useRef<PcWorkbench | null>(null);
   const [current, setCurrent] = useState<ComponentName>("Motherboard");
@@ -81,67 +82,20 @@ export function ActPlayground() {
     (sum, product) => sum + (product?.price ?? 0),
     0,
   );
+  useEffect(() => {
+    onConfigurationChange?.({
+      ...Object.fromEntries(Object.entries(selected).map(([name, product]) => [name, product?.name])),
+      total,
+    });
+  }, [onConfigurationChange, selected, total]);
   return (
     <>
-      <section className="hero" id="inicio">
-        <div className="container hero-grid">
-          <div>
-            <span className="eyebrow">Personaliza tu PC</span>
-            <h1>Donde nace tu proxima maquina.</h1>
-            <p>
-              No vendemos cajas; creamos bestias hechas a tu medida. Eliges el
-              poder, nosotros le damos vida para reventar juegos, trabajar sin
-              que se crashee nada y para todo lo que quieras.
-            </p>
-            <div className="hero-actions">
-              <a href="#configurador" className="btn btn-primary">
-                Empezar
-              </a>
-              <a href="#configurador" className="btn btn-secondary">
-                Ver catálogo
-              </a>
-            </div>
-            <div className="mini-info">
-              <div>
-                <strong>+2,000</strong>
-                <span>Equipos armados</span>
-              </div>
-              <div>
-                <strong>24/7</strong>
-                <span>Atención</span>
-              </div>
-              <div>
-                <strong>3 años</strong>
-                <span>Garantía</span>
-              </div>
-            </div>
-          </div>
-          <aside className="summary-card">
-            <div className="summary-top">
-              <h3>Tu configuración</h3>
-              <span className="price-badge">Actual</span>
-            </div>
-            <div className="amount">
-              ${total.toLocaleString("es-MX")} <small>MXN</small>
-            </div>
-            <ul className="selection-list">
-              {componentOrder.map((name, index) => (
-                <li key={name} className={selected[name] ? "active" : ""}>
-                  <span className="step-number">{index + 1}</span>
-                  <span className="selection-name">
-                    {selected[name]?.name || "Pendiente"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </aside>
-        </div>
-      </section>
       <section className="wizard" id="configurador">
-        <div className="container">
-          <div className="section-head">
-            <h2>Selecciona tus componentes</h2>
-            <p>Haz tu PC a medida paso a paso</p>
+        <div className="container mx-auto">
+          <div className="">
+            <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">Acto IV</p>
+            <h2 className="font-display text-4xl font-bold tracking-tight sm:text-5xl text-balance">Selecciona tus componentes</h2>
+            <p className="mt-4 max-w-xl text-mist">Haz tu PC a medida paso a paso</p>
           </div>
           <div className="catalog">
             <div className="category-panel">
@@ -198,6 +152,7 @@ export function ActPlayground() {
           </div>
         </div>
       </section>
+      
       <ProductModelViewer model={viewer} onClose={() => setViewer(null)} />
     </>
   );

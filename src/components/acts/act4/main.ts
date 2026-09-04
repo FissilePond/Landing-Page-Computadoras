@@ -77,6 +77,15 @@ const componentGlowIntensity = 0.2;
 const cpuGlowIntensity = 0.3;
 const ramGlowIntensity = 0.3;
 const ramSlotGlowOpacity = 0.3;
+const pastelSlotColors: Record<Category, string> = {
+  motherboard: "#9ed9e8",
+  cpu: "#ffd6a5",
+  memory: "#f5b7df",
+  storage: "#b9efd8",
+  psu: "#d9d2f5",
+  gpu: "#a9e8df",
+  fans: "#cbb8ee",
+};
 
 const material = (
   color: string,
@@ -501,7 +510,7 @@ export function initPcWorkbench(
         group.position.set(...slotPositions[category]);
         const [slotWidth, slotHeight, slotDepth] = slotSizes[category];
         const slotMaterial = new THREE.LineBasicMaterial({
-        color: "#18f4ff",
+        color: pastelSlotColors[category],
         transparent: true,
         opacity: 0.16,
         });
@@ -585,7 +594,7 @@ export function initPcWorkbench(
     const animate = () => {
         controls.update();
         slots.rotation.y = Math.sin(performance.now() * 0.00008) * 0.025;
-        const pulse = 0.11 + (Math.sin(performance.now() * 0.0042) + 1) * 0.07;
+        const pulse = (Math.sin(performance.now() * 0.0042) + 1) * 0.025;
         slotMaterials.forEach((slotMaterial, category) => {
         const installed = installedCategories.has(category);
         const active = category === activeCategory && Boolean(currentSelection[category]);
@@ -595,11 +604,11 @@ export function initPcWorkbench(
             ? pulse + (category === "memory" ? ramSlotGlowOpacity : activeSlotOpacity)
             : category === hoverCategory
                 ? hoverSlotOpacity
-                : idleSlotOpacity;
+                : idleSlotOpacity + pulse * 0.35;
         slotMaterial.color.set(
           active || category === hoverCategory
-            ? "#ffffff"
-            : "#18f4ff",
+            ? "#ffffff90"
+            : pastelSlotColors[category],
         );
         });
         composer.render();
