@@ -591,7 +591,9 @@ export function initPcWorkbench(
     const observer = new ResizeObserver(resize);
     observer.observe(host ?? canvas);
     resize();
+    let running = false;
     const animate = () => {
+        if (!running) return;
         controls.update();
         slots.rotation.y = Math.sin(performance.now() * 0.00008) * 0.025;
         const pulse = (Math.sin(performance.now() * 0.0042) + 1) * 0.025;
@@ -614,9 +616,28 @@ export function initPcWorkbench(
         composer.render();
         frame = requestAnimationFrame(animate);
     };
-    animate();
+    const start = () => {
+      if (running) return;
+      running = true;
+      resize();
+      frame = requestAnimationFrame(animate);
+    };
+    const stop = () => {
+      running = false;
+      cancelAnimationFrame(frame);
+      frame = 0;
+    };
+    const visibility = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) start();
+        else stop();
+      },
+      { rootMargin: "200px", threshold: 0.01 },
+    );
+    visibility.observe(host ?? canvas);
     const dispose = () => {
-        cancelAnimationFrame(frame);
+        stop();
+        visibility.disconnect();
         observer.disconnect();
         canvas.removeEventListener("pointermove", pointerMove);
         canvas.removeEventListener("pointerdown", pointerDown);

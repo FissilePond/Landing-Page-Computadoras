@@ -222,10 +222,14 @@ function setupScene(canvas: HTMLCanvasElement, modelId: string, large = false) {
     100,
   );
   camera.position.set(0, 0.5, large ? 7 : 6);
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    powerPreference: "low-power",
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, large ? 2 : 1.25));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = false;
   scene.add(new THREE.HemisphereLight("#d9f5ff", "#17111d", 2.2));
   const light = new THREE.DirectionalLight("#fff", 3.5);
   light.position.set(3, 4, 5);
@@ -235,18 +239,56 @@ function setupScene(canvas: HTMLCanvasElement, modelId: string, large = false) {
   controls.enableDamping = true;
   controls.enablePan = false;
   let frame = 0;
-  const animate = () => {
+  let running = false;
+  let lastW = 0;
+  let lastH = 0;
+
+  const syncSize = () => {
     const size = canvas.getBoundingClientRect();
-    renderer.setSize(Math.max(size.width, 1), Math.max(size.height, 1), false);
-    camera.aspect = Math.max(size.width, 1) / Math.max(size.height, 1);
+    const w = Math.max(Math.floor(size.width), 1);
+    const h = Math.max(Math.floor(size.height), 1);
+    if (w === lastW && h === lastH) return;
+    lastW = w;
+    lastH = h;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
+  };
+
+  const animate = () => {
+    if (!running) return;
+    syncSize();
     controls.update();
     renderer.render(scene, camera);
     frame = requestAnimationFrame(animate);
   };
-  animate();
-  return () => {
+
+  const start = () => {
+    if (running) return;
+    running = true;
+    syncSize();
+    frame = requestAnimationFrame(animate);
+  };
+
+  const stop = () => {
+    running = false;
     cancelAnimationFrame(frame);
+    frame = 0;
+  };
+
+  // Solo renderiza cuando el canvas está (casi) en pantalla
+  const io = new IntersectionObserver(
+    ([entry]) => {
+      if (entry?.isIntersecting) start();
+      else stop();
+    },
+    { rootMargin: "120px", threshold: 0.01 },
+  );
+  io.observe(canvas);
+
+  return () => {
+    stop();
+    io.disconnect();
     controls.dispose();
     disposeScene(scene);
     renderer.dispose();

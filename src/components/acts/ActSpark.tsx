@@ -389,9 +389,13 @@ export function ActSpark() {
 
     /** Rim por proximidad · ENTRA se traba al bajar y se suelta al subir */
     let enterLatched = false
-    let latchedAtProgress = 1
+    let enterHideTween: gsap.core.Tween | undefined
+    let enterRescuedForPin = false
+    const ideaPinActive = () => Boolean(ideaTl?.scrollTrigger?.isActive)
 
     const showEnter = () => {
+      enterHideTween?.kill()
+      enterHideTween = undefined
       gsap.to(enter, {
         autoAlpha: 1,
         y: 0,
@@ -404,7 +408,12 @@ export function ActSpark() {
     }
 
     const hideEnter = () => {
-      gsap.to(enter, {
+      // Con el pin del Acto 2 activo, el progreso del Acto 1 puede caer a 0
+      // (más con el layout/WebGL del Acto 4). Ahí ENTRA ya no es del Acto 1:
+      // lo apaga solo ideaTl con scrub.
+      if (ideaPinActive()) return
+      enterHideTween?.kill()
+      enterHideTween = gsap.to(enter, {
         autoAlpha: 0,
         y: 14,
         filter: 'blur(8px)',
@@ -412,6 +421,9 @@ export function ActSpark() {
         duration: 0.35,
         ease: 'power2.inOut',
         overwrite: 'auto',
+        onComplete: () => {
+          enterHideTween = undefined
+        },
       })
     }
 
@@ -470,19 +482,35 @@ export function ActSpark() {
 
       if (absorb >= 1 && !enterLatched) {
         enterLatched = true
-        latchedAtProgress = progress
         showEnter()
       }
 
-      // Solo soltar ENTRA si realmente subes el Acto 1. El pin hace que el
-      // progreso tiemble ~1% en scroll lento; 0.012 era demasiado justo.
-      if (enterLatched && progress < latchedAtProgress - 0.08) {
+      // Solo soltar si realmente subes el Acto 1 (lejos de la cabeza).
+      // No usar histéresis relativa al latch: el pin puede reportar progress 0
+      // y eso siempre ganaba a cualquier umbral tipo latch-0.08.
+      if (enterLatched && !ideaPinActive() && progress < 0.65) {
         enterLatched = false
         hideEnter()
       }
     }
 
     const onFrame = () => {
+      const pinOn = ideaPinActive()
+      if (!pinOn) enterRescuedForPin = false
+
+      // Pin activo + hide que ganó la carrera: un solo rescate con fade,
+      // solo antes del fade scrubbed de ideaTl (0.14). Sin gsap.set.
+      if (
+        pinOn &&
+        enterLatched &&
+        !enterRescuedForPin &&
+        (ideaTl?.progress() ?? 0) < 0.12 &&
+        (enterHideTween || (gsap.getProperty(enter, 'autoAlpha') as number) < 0.05)
+      ) {
+        enterRescuedForPin = true
+        showEnter()
+      }
+
       if (inClimax()) {
         // El relevo: la luz del recorrido se apaga y manda la del clímax
         gsap.set([spark, glow], { autoAlpha: 0 })

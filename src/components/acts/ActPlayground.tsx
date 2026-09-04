@@ -21,8 +21,10 @@ const products: Record<ComponentName, Product[]> = {
 }
 
 export function ActPlayground({ onConfigurationChange }: { onConfigurationChange?: (summary: ConfigurationSummary) => void }) {
+  const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workbenchRef = useRef<PcWorkbench | null>(null);
+  const [live3d, setLive3d] = useState(false);
   const [current, setCurrent] = useState<ComponentName>("Motherboard");
   const [selected, setSelected] = useState<
     Partial<Record<ComponentName, Product>>
@@ -38,7 +40,26 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
       ) as Partial<Record<Category, ScenePart>>,
     [selected],
   );
+
+  // No montar WebGL hasta acercarse al Acto 4 (libera el Acto 1)
   useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setLive3d(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "280px", threshold: 0.01 },
+    );
+    io.observe(section);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!live3d) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     workbenchRef.current = initPcWorkbench(
@@ -58,7 +79,9 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
       workbenchRef.current?.dispose();
       workbenchRef.current = null;
     };
-  }, []);
+    // selectedByCategory solo para el estado inicial; updates van por el otro effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live3d]);
   useEffect(() => {
     workbenchRef.current?.updateSelection(selectedByCategory);
   }, [selectedByCategory]);
@@ -90,7 +113,7 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
   }, [onConfigurationChange, selected, total]);
   return (
     <>
-      <section className="wizard" id="configurador">
+      <section ref={sectionRef} className="wizard" id="configurador">
         <div className="container mx-auto">
           <div className="">
             <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">Acto IV</p>
@@ -100,10 +123,19 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
           <div className="catalog">
             <div className="category-panel">
               <div className="pc-app">
-                <canvas
-                  ref={canvasRef}
-                  aria-label="Simulador 3D de armado de PC"
-                />
+                {live3d ? (
+                  <canvas
+                    ref={canvasRef}
+                    aria-label="Simulador 3D de armado de PC"
+                  />
+                ) : (
+                  <div
+                    className="grid h-full place-items-center rounded-[1rem] bg-fog/40 text-sm text-mist"
+                    aria-hidden
+                  >
+                    Cargando vista 3D…
+                  </div>
+                )}
               </div>
             </div>
             <div className="product-panel">
@@ -125,7 +157,11 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
                       onClick={() => isCompatible && choose(product)}
                     >
                       <div className="product-thumb" data-model={product.id}>
-                        <ProductModelCanvas model={model} />
+                        {live3d ? (
+                          <ProductModelCanvas model={model} />
+                        ) : (
+                          <div className="h-full w-full rounded-md bg-steel/40" aria-hidden />
+                        )}
                       </div>
                       <div className="product-info">
                         <h4>{product.name}</h4>
