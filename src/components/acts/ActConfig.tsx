@@ -42,11 +42,12 @@ export function ActConfig({ configuration }: { configuration: ConfigurationSumma
           <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">Acto V</p>
           <h2 className="font-display text-4xl font-bold tracking-tight sm:text-5xl text-balance">El despertar</h2>
           <p className="mt-4 text-mist leading-relaxed">
-            La máquina ya está armada. Ahora se despierta y se valida antes de entregarla: nada se va casi listo.
+            La máquina ya está armada. Ahora se despierta, se calibra y se valida antes de entregarla: nada se va casi listo.
           </p>
           <ul className="mt-8 space-y-3 text-sm text-paper/90">
             <li className="border-l-2 border-spark/60 pl-4">Estándares de armado y cableado limpio</li>
-            <li className="border-l-2 border-spark/60 pl-4">Pruebas de estrés, temperaturas y estabilidad</li>
+            <li className="border-l-2 border-spark/60 pl-4">BIOS, drivers y perfiles configurados</li>
+            <li className="border-l-2 border-spark/60 pl-4">Pruebas de estrés, temperaturas y estabilidad sostenida</li>
             <li className="border-l-2 border-spark/60 pl-4">Garantía real sobre el trabajo</li>
           </ul>
         </div>
