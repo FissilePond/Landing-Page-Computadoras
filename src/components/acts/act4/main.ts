@@ -25,6 +25,7 @@ export type ScenePart = {
 export type PcWorkbench = {
   updateSelection: (selected: Partial<Record<Category, ScenePart>>) => void;
   setActiveCategory: (category: Category) => void;
+  reset: () => void;
   dispose: () => void;
 };
 
@@ -657,6 +658,23 @@ export function initPcWorkbench(
         composer.dispose();
         renderer.dispose();
     };
+      const reset = () => {
+        installed.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+          object.geometry.dispose();
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.forEach((current) => current.dispose());
+        });
+        installed.clear();
+        installedCategories.clear();
+        activeCategory = "motherboard";
+        hoverCategory = null;
+        slotMaterials.forEach((slotMaterial) => {
+          slotMaterial.opacity = idleSlotOpacity;
+        });
+      };
     return {
         updateSelection: (nextSelection: Partial<Record<Category, ScenePart>>) => {
         currentSelection = nextSelection;
@@ -664,6 +682,7 @@ export function initPcWorkbench(
       setActiveCategory: (category: Category) => {
       activeCategory = category;
       },
+        reset,
         dispose,
     };
 }

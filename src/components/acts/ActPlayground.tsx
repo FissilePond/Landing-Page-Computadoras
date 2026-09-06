@@ -105,6 +105,12 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
     (sum, product) => sum + (product?.price ?? 0),
     0,
   );
+  const resetSelection = () => {
+    setSelected({});
+    setCurrent("Motherboard");
+    setViewer(null);
+    workbenchRef.current?.reset();
+  };
   useEffect(() => {
     onConfigurationChange?.({
       ...Object.fromEntries(Object.entries(selected).map(([name, product]) => [name, product?.name])),
@@ -130,7 +136,7 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
                   />
                 ) : (
                   <div
-                    className="grid h-full place-items-center rounded-[1rem] bg-fog/40 text-sm text-mist"
+                    className="grid h-full place-items-center rounded-2xl bg-fog/40 text-sm text-mist"
                     aria-hidden
                   >
                     Cargando vista 3D…
@@ -138,52 +144,59 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
                 )}
               </div>
             </div>
-            <div className="product-panel">
-              <h3 className="category-name">{current}</h3>
-              <p className="category-description">{descriptions[current]}</p>
-              <div className="product-list">
-                {products[current].map((product) => {
-                  const isCompatible = compatible(product);
-                  const model = {
-                    id: product.id,
-                    category: categoryFor[current],
-                    part: product,
-                  };
-                  return (
-                    <div
-                      key={product.id}
-                      className={`product-item${selected[current]?.id === product.id ? " active" : ""}${isCompatible ? "" : " is-incompatible"}`}
-                      aria-disabled={!isCompatible}
-                      onClick={() => isCompatible && choose(product)}
-                    >
-                      <div className="product-thumb" data-model={product.id}>
-                        {live3d ? (
-                          <ProductModelCanvas model={model} />
-                        ) : (
-                          <div className="h-full w-full rounded-md bg-steel/40" aria-hidden />
-                        )}
+            <div className="product-panel h-full flex flex-col gap-4 justify-between">
+              <div className="">
+                <h3 className="category-name">{current}</h3>
+                <p className="category-description">{descriptions[current]}</p>
+                <div className="product-list">
+                  {products[current].map((product) => {
+                    const isCompatible = compatible(product);
+                    const model = {
+                      id: product.id,
+                      category: categoryFor[current],
+                      part: product,
+                    };
+                    return (
+                      <div
+                        key={product.id}
+                        className={`product-item${selected[current]?.id === product.id ? " active" : ""}${isCompatible ? "" : " is-incompatible"}`}
+                        aria-disabled={!isCompatible}
+                        onClick={() => isCompatible && choose(product)}
+                      >
+                        <div className="product-thumb" data-model={product.id}>
+                          {live3d ? (
+                            <ProductModelCanvas model={model} />
+                          ) : (
+                            <div className="h-full w-full rounded-md bg-steel/40" aria-hidden />
+                          )}
+                        </div>
+                        <div className="product-info">
+                          <h4>{product.name}</h4>
+                          <p>{product.details}</p>
+                          <button
+                            className="view-360"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setViewer(model);
+                            }}
+                          >
+                            Ver en 360°
+                          </button>
+                        </div>
+                        <div className="price-tag">
+                          ${product.price.toLocaleString("es-MX")}
+                        </div>
                       </div>
-                      <div className="product-info">
-                        <h4>{product.name}</h4>
-                        <p>{product.details}</p>
-                        <button
-                          className="view-360"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setViewer(model);
-                          }}
-                        >
-                          Ver en 360°
-                        </button>
-                      </div>
-                      <div className="price-tag">
-                        ${product.price.toLocaleString("es-MX")}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+
               </div>
+
+              <button className="reiniciar-seleccion" type="button" onClick={resetSelection}>
+                Reiniciar selección
+              </button>
             </div>
           </div>
         </div>

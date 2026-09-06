@@ -424,6 +424,19 @@
     color: var(--color-spark);
 }
 
+.reiniciar-seleccion {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid color-mix(in oklab, var(--color-paper) 16%, transparent);
+    border-radius: 999px;
+    background: var(--color-spark);
+    color: black;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 1em;
+    font-weight: 700;
+}
+
 @media (max-width: 980px) {
 
     .hero-grid,
