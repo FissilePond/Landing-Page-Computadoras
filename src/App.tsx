@@ -9,6 +9,9 @@ export default function App() {
   const [configuration, setConfiguration] = useState<ConfigurationSummary>({ total: 0 })
   const configurationComplete = ['Motherboard', 'Procesador', 'RAM', 'Almacenamiento', 'PSU', 'GPU', 'Ventiladores']
     .every((component) => Boolean(configuration[component as keyof ConfigurationSummary]))
+  const scrollToConfiguration = () => {
+    document.getElementById('configuracion')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div className="min-h-screen bg-void text-paper">
@@ -33,7 +36,7 @@ export default function App() {
         {/* ===== ACTO 1–3 (deseo → idea → plano + rasgado) ===== */}
         <ActSpark />
         {/* ===== ACTO 4 — playground ===== */}
-        <ActPlayground onConfigurationChange={setConfiguration} />
+        <ActPlayground onConfigurationChange={setConfiguration} onAssemblyComplete={scrollToConfiguration} />
         {!configurationComplete && (
           <div className="relative z-10 mx-auto mb-12 max-w-6xl px-6 text-center text-sm text-paper/80 mt-8">
             <p>Completa tu configuración para continuar.</p>

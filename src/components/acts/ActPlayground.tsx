@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './act4/styles.css'
 import { initPcWorkbench, type Category, type PcWorkbench, type ScenePart } from './act4/main.ts'
-import { ProductModelCanvas, ProductModelViewer, type ProductModel } from './act4/models.tsx'
+// ProductModelViewer queda fuera de la interfaz visible por ahora.
 
 export type ComponentName = 'Motherboard' | 'Procesador' | 'RAM' | 'Almacenamiento' | 'PSU' | 'GPU' | 'Ventiladores'
 export type ConfigurationSummary = Partial<Record<ComponentName, string>> & { total: number }
 type Product = ScenePart & { name: string; details: string; id: string; price: number; socket?: string; memoryType?: string; interface?: string; capacity?: number; watts?: number }
 
 const componentOrder: ComponentName[] = ['Motherboard', 'Procesador', 'RAM', 'Almacenamiento', 'PSU', 'GPU', 'Ventiladores']
+const componentInitials: Record<ComponentName, string> = {
+  Motherboard: 'Mb',
+  Procesador: 'CPU',
+  RAM: 'RAM',
+  Almacenamiento: 'SSD',
+  PSU: 'PSU',
+  GPU: 'GPU',
+  Ventiladores: 'Fan',
+}
 const categoryFor: Record<ComponentName, Category> = { Motherboard: 'motherboard', Procesador: 'cpu', RAM: 'memory', Almacenamiento: 'storage', PSU: 'psu', GPU: 'gpu', Ventiladores: 'fans' }
 const descriptions: Record<ComponentName, string> = { Motherboard: 'Compatibilidad y expansión.', Procesador: 'Elige la marca y la familia ideal.', RAM: 'Velocidad y capacidad suficientes.', Almacenamiento: 'SSD y capacidad para tus juegos.', PSU: 'Potencia estable y eficiente para tu equipo.', GPU: 'Rendimiento para gaming y edición.', Ventiladores: 'Mantén temperaturas óptimas y flujo de aire.' }
 const products: Record<ComponentName, Product[]> = {
@@ -20,7 +29,7 @@ const products: Record<ComponentName, Product[]> = {
     Ventiladores: [{ id: 'rgb-fans-3-pack', name: 'Kit de 3 ventiladores RGB', details: '120 mm • Flujo de aire optimizado', count: 3, price: 799, color: '#0f172a', accent: '#8b5cf6' }, { id: 'argb-fans-5-pack', name: 'Kit de 5 ventiladores ARGB', details: '120 mm • Alto rendimiento', count: 5, price: 1299, color: '#0f172a', accent: '#8b5cf6' }],
 }
 
-export function ActPlayground({ onConfigurationChange }: { onConfigurationChange?: (summary: ConfigurationSummary) => void }) {
+export function ActPlayground({ onConfigurationChange, onAssemblyComplete }: { onConfigurationChange?: (summary: ConfigurationSummary) => void; onAssemblyComplete?: () => void }) {
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workbenchRef = useRef<PcWorkbench | null>(null);
@@ -29,7 +38,6 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
   const [selected, setSelected] = useState<
     Partial<Record<ComponentName, Product>>
   >({});
-  const [viewer, setViewer] = useState<ProductModel | null>(null);
   const selectedByCategory = useMemo(
     () =>
       Object.fromEntries(
@@ -66,6 +74,9 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
       canvas,
       selectedByCategory,
       (category) => {
+        if (category === "fans") {
+          window.setTimeout(() => onAssemblyComplete?.(), 550);
+        }
         const index = componentOrder.indexOf(
           componentOrder.find(
             (name) => categoryFor[name] === category,
@@ -108,7 +119,6 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
   const resetSelection = () => {
     setSelected({});
     setCurrent("Motherboard");
-    setViewer(null);
     workbenchRef.current?.reset();
   };
   useEffect(() => {
@@ -151,11 +161,6 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
                 <div className="product-list">
                   {products[current].map((product) => {
                     const isCompatible = compatible(product);
-                    const model = {
-                      id: product.id,
-                      category: categoryFor[current],
-                      part: product,
-                    };
                     return (
                       <div
                         key={product.id}
@@ -163,26 +168,12 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
                         aria-disabled={!isCompatible}
                         onClick={() => isCompatible && choose(product)}
                       >
-                        <div className="product-thumb" data-model={product.id}>
-                          {live3d ? (
-                            <ProductModelCanvas model={model} />
-                          ) : (
-                            <div className="h-full w-full rounded-md bg-steel/40" aria-hidden />
-                          )}
+                        <div className="product-thumb" aria-label={`Categoría ${current}`}>
+                          <span>{componentInitials[current]}</span>
                         </div>
                         <div className="product-info">
                           <h4>{product.name}</h4>
                           <p>{product.details}</p>
-                          <button
-                            className="view-360"
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setViewer(model);
-                            }}
-                          >
-                            Ver en 360°
-                          </button>
                         </div>
                         <div className="price-tag">
                           ${product.price.toLocaleString("es-MX")}
@@ -202,7 +193,7 @@ export function ActPlayground({ onConfigurationChange }: { onConfigurationChange
         </div>
       </section>
       
-      <ProductModelViewer model={viewer} onClose={() => setViewer(null)} />
+      {/* ProductModelViewer no se muestra en esta versión. */}
     </>
   );
 }
