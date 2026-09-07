@@ -29,7 +29,15 @@ const products: Record<ComponentName, Product[]> = {
     Ventiladores: [{ id: 'rgb-fans-3-pack', name: 'Kit de 3 ventiladores RGB', details: '120 mm • Flujo de aire optimizado', count: 3, price: 799, color: '#0f172a', accent: '#8b5cf6' }, { id: 'argb-fans-5-pack', name: 'Kit de 5 ventiladores ARGB', details: '120 mm • Alto rendimiento', count: 5, price: 1299, color: '#0f172a', accent: '#8b5cf6' }],
 }
 
-export function ActPlayground({ onConfigurationChange, onAssemblyComplete }: { onConfigurationChange?: (summary: ConfigurationSummary) => void; onAssemblyComplete?: () => void }) {
+export function ActPlayground({
+  onConfigurationChange,
+  onAssemblyComplete,
+  onSkip,
+}: {
+  onConfigurationChange?: (summary: ConfigurationSummary) => void
+  onAssemblyComplete?: () => void
+  onSkip?: () => void
+}) {
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workbenchRef = useRef<PcWorkbench | null>(null);
@@ -129,12 +137,16 @@ export function ActPlayground({ onConfigurationChange, onAssemblyComplete }: { o
   }, [onConfigurationChange, selected, total]);
   return (
     <>
-      <section ref={sectionRef} className="wizard" id="configurador">
-        <div className="container mx-auto">
+      <section ref={sectionRef} className="wizard relative z-10 -mt-8" id="configurador">
+        <div className="container mx-auto px-6 md:px-8">
           <div className="">
             <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">Acto IV</p>
-            <h2 className="font-display text-4xl font-bold tracking-tight sm:text-5xl text-balance">Selecciona tus componentes</h2>
-            <p className="mt-4 max-w-xl text-mist">Haz tu PC a medida paso a paso</p>
+            <h2 className="font-display text-4xl font-bold tracking-tight sm:text-5xl text-balance">
+              El taller se pone a trabajar
+            </h2>
+            <p className="mt-4 max-w-xl text-mist">
+              El plan ya está aprobado. Elige las piezas — o salta y sigue.
+            </p>
           </div>
           <div className="catalog">
             <div className="category-panel">
@@ -146,7 +158,7 @@ export function ActPlayground({ onConfigurationChange, onAssemblyComplete }: { o
                   />
                 ) : (
                   <div
-                    className="grid h-full place-items-center rounded-2xl bg-fog/40 text-sm text-mist"
+                    className="grid h-full place-items-center bg-fog/40 text-sm text-mist"
                     aria-hidden
                   >
                     Cargando vista 3D…
@@ -176,7 +188,7 @@ export function ActPlayground({ onConfigurationChange, onAssemblyComplete }: { o
                           <p>{product.details}</p>
                         </div>
                         <div className="price-tag">
-                          ${product.price.toLocaleString("es-MX")}
+                          ${product.price.toLocaleString("es-MX")} MXN
                         </div>
                       </div>
                     );
@@ -185,9 +197,18 @@ export function ActPlayground({ onConfigurationChange, onAssemblyComplete }: { o
 
               </div>
 
-              <button className="reiniciar-seleccion" type="button" onClick={resetSelection}>
-                Reiniciar selección
-              </button>
+              <div className="wizard-actions">
+                <button className="reiniciar-seleccion" type="button" onClick={resetSelection}>
+                  Reiniciar
+                </button>
+                <button
+                  className="saltar-config"
+                  type="button"
+                  onClick={() => onSkip?.()}
+                >
+                  Saltar
+                </button>
+              </div>
             </div>
           </div>
         </div>

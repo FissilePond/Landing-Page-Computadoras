@@ -1,10 +1,10 @@
 export const PLACEHOLDERS = {
-  brand: 'PC Studio',
+  brand: 'CompuLab',
   tagline: 'Armado & reparación de alto rendimiento',
   phone: '+52 000 000 0000',
   phoneHref: 'tel:+520000000000',
   whatsapp: 'https://wa.me/520000000000',
-  email: 'hola@pcstudio.placeholder',
+  email: 'hola@compulab.placeholder',
   address: 'Taller — Ciudad, MX (placeholder)',
   socials: [
     { label: 'Instagram', href: '#' },
@@ -13,49 +13,24 @@ export const PLACEHOLDERS = {
   ],
 } as const
 
-/** Copy del Acto II: la idea (aún no el plano / transacción) */
+/** Acto II — la idea: para qué la quieres (solo conceptos) */
 export const IDEA_COPY = {
   kicker: 'Acto II',
-  title: 'La idea toma forma',
-  lead: 'Todavía no es un pedido. Es la silueta de lo que quieres crear — o de lo que hay que recuperar.',
-  items: [
-    {
-      title: 'Armado',
-      body: 'Una máquina nueva, pensada para lo que vas a hacer con ella.',
-    },
-    {
-      title: 'Reparación',
-      body: 'La que ya tienes: devolverle el potencial que se quedó a medias.',
-    },
-    {
-      title: 'Cotización',
-      body: 'Bajar la idea a piezas y números, sin compromiso todavía.',
-    },
-    {
-      title: 'Garantía 1 mes',
-      body: 'Cuando se materialice, el trabajo se sostiene el primer mes.',
-    },
-  ],
+  /** Continúa la lectura del Acto 1 (“Y que al final…” → ENTRA). Temporal. */
+  title: 'sabes para qué la quieres',
+  items: ['Crear', 'Jugar', 'Trabajar', 'Recuperar'] as const,
 } as const
 
-/** Copy del Acto III: el plan (blueprint / acuerdo) */
+/** Acto III — el plan: por qué con CompuLab (pragmático) + sello = transacción */
 export const PLAN_COPY = {
   kicker: 'Acto III',
-  title: 'El plan quedó',
-  lead: 'La idea ya tiene reglas. El taller puede empezar.',
+  title: 'Con nosotros, queda claro',
+  lead: 'Armar aquí es una decisión con reglas — no un salto a ciegas.',
   items: [
-    {
-      title: 'Uso',
-      body: 'Para qué la quieres — y qué tiene que aguantar.',
-    },
-    {
-      title: 'Piezas',
-      body: 'Compatibilidad cerrada: nada a ciegas.',
-    },
-    {
-      title: 'Tiempo',
-      body: 'Cuándo la tienes lista, sin humo.',
-    },
+    { title: 'Piezas compatibles', body: 'Nada a prueba y error.' },
+    { title: 'Tiempo claro', body: 'Sabes cuándo la tienes.' },
+    { title: 'Pruebas reales', body: 'Estabilidad antes de entregar.' },
+    { title: 'Garantía 1 mes', body: 'El trabajo se sostiene.' },
   ],
 } as const
 

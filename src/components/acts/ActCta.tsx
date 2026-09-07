@@ -84,12 +84,11 @@ export function ActCta() {
             data-cta
             className="font-display text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl text-balance"
           >
-            Podrías ser tú,
+            Podrías ser tú.
             <span className="mt-2 block text-spark">¿Empezamos?</span>
           </h2>
           <p data-cta className="mt-5 max-w-md text-mist">
-            Cuéntanos qué quieres crear — o qué hay que recuperar. Respondemos con un plan
-            claro.
+            Cuéntanos qué quieres crear — o qué hay que recuperar.
           </p>
 
           <div data-cta className="mt-8 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -100,13 +99,7 @@ export function ActCta() {
               rel="noreferrer"
               className="inline-flex items-center justify-center rounded-full bg-spark px-8 py-3.5 font-display text-sm font-bold tracking-wide text-void transition hover:brightness-110"
             >
-              Empezar por WhatsApp
-            </a>
-            <a
-              href={PLACEHOLDERS.phoneHref}
-              className="text-sm text-mist transition hover:text-paper"
-            >
-              {PLACEHOLDERS.phone}
+              Contáctanos
             </a>
           </div>
         </div>

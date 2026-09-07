@@ -44,22 +44,28 @@ const TRAIL_MAX_POINTS = 160
 
 /** Pantallas de scroll: Acto 2 (idea) + Acto 3 (plano) + rasgado → Acto 4 */
 const IDEA_SCREENS = 4.8
-const PLAN_SCREENS = 1.9
-const TEAR_SCREENS = 1.6
+const PLAN_SCREENS = 2.8
+const TEAR_SCREENS = 3.2
 const PIN_SCREENS = IDEA_SCREENS + PLAN_SCREENS + TEAR_SCREENS
 
 /** Tiempos en la timeline pineada (Acto 2 ocupa 0→1; el resto se escala al scroll).
  *  PLAN_START > 1 = aire de lectura del copy del Acto 2 antes del morph. */
-const PLAN_START = 1.32
+const PLAN_START = 1.42
 const PLAN_MORPH = PLAN_START
-const PLAN_COPY_AT = PLAN_START + (PLAN_SCREENS / IDEA_SCREENS) * 0.32
-const PLAN_STAMP_AT = PLAN_START + (PLAN_SCREENS / IDEA_SCREENS) * 0.62
+const PLAN_COPY_AT = PLAN_START + (PLAN_SCREENS / IDEA_SCREENS) * 0.22
+/** Sello DESPUÉS de poder leer toda la ficha (items + aire) */
+const PLAN_STAMP_AT = PLAN_START + (PLAN_SCREENS / IDEA_SCREENS) * 0.78
 const TEAR_START = PLAN_START + PLAN_SCREENS / IDEA_SCREENS
 const TEAR_END = TEAR_START + TEAR_SCREENS / IDEA_SCREENS
 
-const BLUEPRINT_BG = '#0b1f3a'
-const BLUEPRINT_GRID =
-  'repeating-linear-gradient(0deg, rgba(255,255,255,0.11) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(255,255,255,0.11) 0 1px, transparent 1px 28px)'
+/** Blueprint más claro: contraste y grilla legible (Acto 3) */
+const BLUEPRINT_BG = '#132a4a'
+const BLUEPRINT_GRID = [
+  'repeating-linear-gradient(0deg, rgba(255,255,255,0.07) 0 1px, transparent 1px 22px)',
+  'repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px 22px)',
+  'repeating-linear-gradient(0deg, rgba(255,255,255,0.16) 0 1px, transparent 1px 110px)',
+  'repeating-linear-gradient(90deg, rgba(255,255,255,0.16) 0 1px, transparent 1px 110px)',
+].join(', ')
 const STAMP_LIME = '#a3e635'
 
 /** Curva con la que la luz se apaga al acercarse a la cabeza. La usan los dos actos:
@@ -533,13 +539,12 @@ export function ActSpark() {
       const pinOn = ideaPinActive()
       if (!pinOn) enterRescuedForPin = false
 
-      // Pin activo + hide que ganó la carrera: un solo rescate con fade,
-      // solo antes del fade scrubbed de ideaTl (0.14). Sin gsap.set.
+      // Pin activo + hide que ganó la carrera: rescate solo ANTES del fade de ENTRA
       if (
         pinOn &&
         enterLatched &&
         !enterRescuedForPin &&
-        (ideaTl?.time() ?? 0) < 0.12 &&
+        (ideaTl?.time() ?? 0) < 0.36 &&
         (enterHideTween || (gsap.getProperty(enter, 'autoAlpha') as number) < 0.05)
       ) {
         enterRescuedForPin = true
@@ -619,9 +624,13 @@ export function ActSpark() {
       edgeCores.forEach((el) => prepEdge(el, 1))
       edgeGlows.forEach((el) => prepEdge(el, 0.38))
       gsap.set(ideaLayout, { autoAlpha: 0 })
-      gsap.set(copy.querySelectorAll('[data-copy]'), { opacity: 0 })
+      gsap.set(copy, { autoAlpha: 1, y: 0 })
+      gsap.set(copy.querySelector('[data-idea-kicker]'), { opacity: 0, y: 8 })
+      gsap.set(copy.querySelector('[data-idea-title]'), { opacity: 0, y: 16 })
+      gsap.set(copy.querySelectorAll('[data-idea-item]'), { opacity: 0, y: 14 })
       gsap.set(blueprintBg, { autoAlpha: 0 })
-      gsap.set(planCopy.querySelectorAll('[data-plan]'), { opacity: 0 })
+      gsap.set(planCopy.querySelectorAll('[data-plan-head]'), { opacity: 0, y: 12 })
+      gsap.set(planCopy.querySelectorAll('[data-plan-item]'), { opacity: 0, y: 14 })
       gsap.set(stamp, {
         autoAlpha: 0,
         scale: 1.06,
@@ -629,9 +638,10 @@ export function ActSpark() {
         filter: 'blur(3px)',
         transformOrigin: '50% 50%',
       })
-      gsap.set(tearEdge, { autoAlpha: 0 })
-      gsap.set(paperSheet, { y: '0%' })
-      ideaStage.style.setProperty('--tear-y', '100')
+      gsap.set(tearEdge, { autoAlpha: 0, top: '100%', yPercent: -50, bottom: 'auto' })
+      gsap.set(paperSheet, { y: 0, clipPath: 'inset(0 0 0% 0)' })
+      ideaStage.style.setProperty('--tear-p', '0')
+      gsap.set(ideaStage, { autoAlpha: 1, backgroundColor: 'transparent' })
 
       onFrame()
 
@@ -687,15 +697,18 @@ export function ActSpark() {
         0,
       )
 
+      // ENTRA por encima del ideaStage (z-6) para poder desvanecerse a la vista
+      gsap.set(enter, { zIndex: 8 })
       ideaTl.to(
         enter,
         {
           autoAlpha: 0,
-          filter: 'blur(10px)',
-          duration: 0.32,
+          filter: 'blur(12px)',
+          y: -20,
+          duration: 0.55,
           ease: 'none',
         },
-        0.14,
+        0.38,
       )
 
       // Sube al centro, saliendo de la cabeza, mientras la silueta se hunde
@@ -728,7 +741,7 @@ export function ActSpark() {
       ideaTl.to(rim, { autoAlpha: 0, duration: 0.1 }, 0.16)
       ideaTl.to(silWrap, { autoAlpha: 0, duration: 0.16 }, 0.32)
 
-      ideaTl.to(ideaLayout, { autoAlpha: 1, duration: 0.06 }, 0.52)
+      ideaTl.to(ideaLayout, { autoAlpha: 1, duration: 0.1 }, 0.58)
 
       // Se desarma: la luz se rompe en puntos que vuelan a cada estrella
       ideaTl.to(
@@ -787,12 +800,30 @@ export function ActSpark() {
         drawTo(core)
         if (glow) drawTo(glow)
       })
-      idea.to(copy.querySelector('[data-copy-a]'), { opacity: 1, duration: 0.22, ease: 'none' }, 0.72)
-      idea.to(copy.querySelector('[data-copy-b]'), { opacity: 1, duration: 0.24, ease: 'none' }, 0.84)
+      /* Copy Acto 2: título (continúa Acto 1) → mini lista de conceptos */
+      idea.to(
+        copy.querySelector('[data-idea-kicker]'),
+        { opacity: 1, y: 0, duration: 0.1, ease: 'none' },
+        0.7,
+      )
+      idea.to(
+        copy.querySelector('[data-idea-title]'),
+        { opacity: 1, y: 0, duration: 0.18, ease: 'none' },
+        0.74,
+      )
+      idea.to(
+        copy.querySelectorAll('[data-idea-item]'),
+        { opacity: 1, y: 0, duration: 0.16, ease: 'none', stagger: 0.07 },
+        0.88,
+      )
 
       /* ========== ACTO 3 — el plan (blueprint) ========== */
       const morphDur = Math.max(0.12, PLAN_COPY_AT - PLAN_MORPH)
-      idea.to(copy.querySelectorAll('[data-copy]'), { opacity: 0, duration: morphDur * 0.55, ease: 'none' }, PLAN_MORPH)
+      idea.to(
+        copy,
+        { autoAlpha: 0, y: -10, duration: morphDur * 0.5, ease: 'none' },
+        PLAN_MORPH,
+      )
       idea.to(stars, { opacity: 0, scale: 0.4, duration: morphDur * 0.7, ease: 'none' }, PLAN_MORPH)
       idea.to(
         section.querySelectorAll('[data-star-handle]'),
@@ -807,12 +838,17 @@ export function ActSpark() {
       )
       idea.to(blueprintBg, { autoAlpha: 1, duration: morphDur, ease: 'none' }, PLAN_MORPH)
       idea.to(
-        planCopy.querySelectorAll('[data-plan]'),
-        { opacity: 1, duration: 0.2, ease: 'none', stagger: 0.06 },
+        planCopy.querySelectorAll('[data-plan-head]'),
+        { opacity: 1, y: 0, duration: 0.18, ease: 'none' },
         PLAN_COPY_AT,
       )
+      idea.to(
+        planCopy.querySelectorAll('[data-plan-item]'),
+        { opacity: 1, y: 0, duration: 0.18, ease: 'none', stagger: 0.07 },
+        PLAN_COPY_AT + 0.1,
+      )
 
-      // Sello APROBADO — presión suave (sin bounce cartoon)
+      // Sello APROBADO — solo cuando la ficha ya se pudo leer
       idea.fromTo(
         stamp,
         { autoAlpha: 0, scale: 1.06, rotate: -13, filter: 'blur(3px)' },
@@ -821,40 +857,71 @@ export function ActSpark() {
           scale: 0.985,
           rotate: -11.5,
           filter: 'blur(0px)',
-          duration: 0.16,
+          duration: 0.18,
           ease: 'none',
         },
         PLAN_STAMP_AT,
       )
       idea.to(
         stamp,
-        { scale: 1, rotate: -12, duration: 0.08, ease: 'none' },
-        PLAN_STAMP_AT + 0.16,
+        { scale: 1, rotate: -12, duration: 0.1, ease: 'none' },
+        PLAN_STAMP_AT + 0.18,
       )
 
-      /* ========== Rasgado Trevor Noah — papel sube, Acto 4 queda abajo ========== */
-      const tearDur = TEAR_END - TEAR_START
-      idea.set(tearEdge, { autoAlpha: 1 }, TEAR_START)
-      idea.fromTo(
-        paperSheet,
-        { y: '0%' },
+      /* ========== Rasgado tipo Trevor Noah ==========
+         Plano se queda. clip lo rompe de abajo→arriba con el scroll.
+         Borde = SOLO la fibra fina en la línea de corte (no una franja blanca). */
+      const tearDur = Math.max(0.2, TEAR_END - TEAR_START)
+      const playground = document.getElementById('configurador')
+
+      const applyTearProgress = (p: number) => {
+        const t = gsap.utils.clamp(0, 1, p)
+        const cut = t * 100
+        // Recorta el plano: más scroll → más Acto 4 abajo
+        paperSheet.style.clipPath = `inset(0 0 ${cut}% 0)`
+        ideaStage.style.setProperty('--tear-p', String(t))
+        // Fibra centrada en la línea de corte (altura ~28–36px, no 160px)
+        gsap.set(tearEdge, {
+          top: `${100 - cut}%`,
+          yPercent: -50,
+          autoAlpha: t > 0.02 && t < 0.97 ? 1 : 0,
+        })
+      }
+
+      gsap.set(paperSheet, { y: 0, clearProps: 'transform' })
+      applyTearProgress(0)
+
+      idea.call(() => {
+        if (!playground) return
+        gsap.set(playground, {
+          position: 'fixed',
+          inset: 0,
+          zIndex: 5,
+          width: '100%',
+          marginTop: 0,
+        })
+      }, TEAR_START)
+
+      idea.set(ideaStage, { zIndex: 6 }, TEAR_START)
+
+      const tearProxy = { p: 0 }
+      idea.to(
+        tearProxy,
         {
-          y: '-108%',
+          p: 1,
           duration: tearDur,
           ease: 'none',
-          onUpdate: function (this: gsap.core.Tween) {
-            const p = this.progress()
-            ideaStage.style.setProperty('--tear-y', String(100 - p * 100))
-          },
+          onUpdate: () => applyTearProgress(tearProxy.p),
         },
         TEAR_START,
       )
-      idea.to(
-        tearEdge,
-        { autoAlpha: 0, duration: Math.min(0.12, tearDur * 0.15), ease: 'none' },
-        TEAR_END - Math.min(0.12, tearDur * 0.15),
-      )
-      idea.set([ideaStage, paperSheet, tearEdge], { autoAlpha: 0 }, TEAR_END)
+
+      idea.call(() => {
+        applyTearProgress(1)
+        if (!playground) return
+        gsap.set(playground, { clearProps: 'position,inset,zIndex,width,marginTop' })
+      }, TEAR_END)
+      idea.set(ideaStage, { autoAlpha: 0 }, TEAR_END)
 
       ScrollTrigger.refresh()
     }, root)
@@ -870,6 +937,8 @@ export function ActSpark() {
     return () => {
       window.removeEventListener('resize', onResize)
       gsap.ticker.remove(onFrame)
+      const pg = document.getElementById('configurador')
+      if (pg) gsap.set(pg, { clearProps: 'position,inset,zIndex,width,marginTop' })
       ctx.revert()
     }
   }, [points])
@@ -1148,14 +1217,15 @@ export function ActSpark() {
               </g>
             </svg>
           </div>
+        </div>
 
+          {/* ENTRA fuera de exitWorld: la silueta puede hundirse sin llevárselo */}
           <p
             ref={enterRef}
-            className="absolute left-1/2 top-[266vh] -translate-x-1/2 font-display text-4xl font-extrabold tracking-[0.32em] text-spark sm:text-6xl md:text-7xl"
+            className="pointer-events-none absolute left-1/2 top-[266vh] z-[8] -translate-x-1/2 font-display text-4xl font-extrabold tracking-[0.32em] text-spark sm:text-6xl md:text-7xl"
           >
             ENTRA
           </p>
-        </div>
 
         {/* ACTO 2–3 — última pantalla: idea → plano → rasgado */}
         <div
@@ -1164,14 +1234,15 @@ export function ActSpark() {
           data-idea-stage
           role="region"
           aria-label="Acto II–III — La idea y el plan"
-          className={`absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible ${
+      className={`absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible bg-transparent ${
             constellationEditing ? 'pointer-events-auto' : 'pointer-events-none'
           }`}
           style={{ ['--tear-y' as string]: 100 }}
         >
           <div
             ref={paperSheetRef}
-            className="absolute inset-0 overflow-visible will-change-transform"
+            className="absolute inset-0 z-[1] will-change-[clip-path]"
+            style={{ clipPath: 'inset(0% 0% 0% 0%)' }}
           >
             <div
               ref={blueprintBgRef}
@@ -1288,92 +1359,136 @@ export function ActSpark() {
                   ))}
               </div>
 
-              <div className="pointer-events-auto relative min-h-[20rem]">
-                <div ref={copyRef} className="relative">
-                  <div data-copy data-copy-a>
-                    <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
-                      {IDEA_COPY.kicker}
-                    </p>
-                    <h2 className="font-display text-4xl font-bold tracking-tight text-paper text-balance sm:text-5xl">
-                      {IDEA_COPY.title}
-                    </h2>
-                    <p className="mt-5 max-w-md text-base leading-relaxed text-mist sm:text-lg">
-                      {IDEA_COPY.lead}
-                    </p>
-                  </div>
-                  <ul data-copy data-copy-b className="mt-10 space-y-5">
+              <div className="pointer-events-auto relative min-h-[20rem] flex items-center">
+                <div ref={copyRef} className="relative w-full" data-copy>
+                  <p
+                    data-idea-kicker
+                    className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase"
+                  >
+                    {IDEA_COPY.kicker}
+                  </p>
+                  <h2
+                    data-idea-title
+                    className="font-display text-3xl font-bold tracking-tight text-paper text-balance sm:text-4xl md:text-5xl"
+                  >
+                    {IDEA_COPY.title}
+                  </h2>
+                  <ul className="mt-10 space-y-3">
                     {IDEA_COPY.items.map((item) => (
-                      <li key={item.title}>
-                        <p className="font-display text-lg text-paper">{item.title}</p>
-                        <p className="mt-1 text-sm leading-relaxed text-mist">{item.body}</p>
+                      <li
+                        key={item}
+                        data-idea-item
+                        className="flex items-baseline gap-3 will-change-transform"
+                      >
+                        <span className="mt-2 size-1.5 shrink-0 rounded-full bg-spark" aria-hidden />
+                        <span className="font-display text-xl text-paper sm:text-2xl">{item}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
 
-                <div ref={planCopyRef} className="pointer-events-none absolute inset-0">
-                  <div data-plan>
-                    <p className="mb-3 text-xs font-medium tracking-[0.3em] uppercase text-white/70">
-                      {PLAN_COPY.kicker}
-                    </p>
-                    <h2 className="font-display text-4xl font-bold tracking-tight text-white text-balance sm:text-5xl">
-                      {PLAN_COPY.title}
-                    </h2>
-                    <p className="mt-5 max-w-md text-base leading-relaxed text-white/75 sm:text-lg">
-                      {PLAN_COPY.lead}
-                    </p>
-                  </div>
-                  <ul data-plan className="mt-10 space-y-5">
-                    {PLAN_COPY.items.map((item) => (
-                      <li key={item.title}>
-                        <p className="font-display text-lg text-white">{item.title}</p>
-                        <p className="mt-1 text-sm leading-relaxed text-white/65">{item.body}</p>
-                      </li>
-                    ))}
-                  </ul>
+                <div ref={planCopyRef} className="pointer-events-none absolute inset-0 flex items-center">
+                  <div className="relative w-full">
+                    <div data-plan-head>
+                      <p className="mb-3 text-xs font-medium tracking-[0.3em] uppercase text-white/65">
+                        {PLAN_COPY.kicker}
+                      </p>
+                      <h2 className="font-display text-3xl font-bold tracking-tight text-white text-balance sm:text-4xl md:text-5xl">
+                        {PLAN_COPY.title}
+                      </h2>
+                      <p className="mt-4 max-w-md text-sm leading-relaxed text-white/75 sm:text-base">
+                        {PLAN_COPY.lead}
+                      </p>
+                    </div>
+                    <ul className="mt-8 space-y-3 border-t border-white/15 pt-6">
+                      {PLAN_COPY.items.map((item) => (
+                        <li
+                          key={item.title}
+                          data-plan-item
+                          className="grid grid-cols-[minmax(0,9.5rem)_1fr] gap-3 sm:grid-cols-[11rem_1fr]"
+                        >
+                          <span className="font-display text-sm font-semibold tracking-wide text-white uppercase sm:text-base">
+                            {item.title}
+                          </span>
+                          <span className="text-sm text-white/70">{item.body}</span>
+                        </li>
+                      ))}
+                    </ul>
 
-                  <div
-                    ref={stampRef}
-                    className="pointer-events-none absolute right-0 bottom-2 sm:bottom-6 md:right-2"
-                    aria-hidden
-                  >
                     <div
-                      className="rounded-sm border-[3px] px-3 py-2 font-display text-2xl font-extrabold tracking-[0.18em] uppercase sm:text-3xl md:text-4xl"
-                      style={{
-                        color: STAMP_LIME,
-                        borderColor: STAMP_LIME,
-                        boxShadow: `inset 0 0 0 2px ${STAMP_LIME}`,
-                        opacity: 0.92,
-                      }}
+                      ref={stampRef}
+                      className="pointer-events-none mt-10 flex justify-end"
+                      aria-hidden
                     >
-                      APROBADO
+                      <div
+                        className="rounded-sm border-[3px] px-3 py-2 font-display text-2xl font-extrabold tracking-[0.18em] uppercase sm:text-3xl"
+                        style={{
+                          color: STAMP_LIME,
+                          borderColor: STAMP_LIME,
+                          boxShadow: `inset 0 0 0 2px ${STAMP_LIME}`,
+                          opacity: 0.92,
+                        }}
+                      >
+                        APROBADO
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Borde rasgado: franja horizontal (rasgado1) enmascara el papel crema */}
+            {/* Fibra del rasgado: fina, en la línea de corte — no una franja que tapa */}
             <div
               ref={tearEdgeRef}
-              className="pointer-events-none absolute inset-x-[-1%] bottom-0 z-[9] h-[56px] w-[102%] sm:h-[68px] md:h-[78px]"
+              className="pointer-events-none absolute inset-x-[-2%] z-[10] h-7 w-[104%] sm:h-8 md:h-9"
               aria-hidden
               style={{
-                transform: 'translateY(48%)',
-                backgroundColor: '#f4f0e8',
-                boxShadow: '0 8px 16px rgba(0,0,0,0.45)',
-                WebkitMaskImage: 'url(/tears/rasgado1.png)',
-                maskImage: 'url(/tears/rasgado1.png)',
-                WebkitMaskSize: '100% 100%',
-                maskSize: '100% 100%',
-                WebkitMaskRepeat: 'no-repeat',
-                maskRepeat: 'no-repeat',
-                WebkitMaskPosition: 'center',
-                maskPosition: 'center',
+                top: '100%',
+                filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.45))',
               }}
-            />
+            >
+              <svg
+                viewBox="0 0 1200 36"
+                preserveAspectRatio="none"
+                className="block h-full w-full"
+              >
+                <path
+                  fill="#f3eee4"
+                  d="M0 18
+                    C40 6 70 28 110 14
+                    C150 2 180 30 220 16
+                    C260 4 300 26 340 12
+                    C380 0 420 32 460 18
+                    C500 6 540 28 580 10
+                    C620 0 660 30 700 16
+                    C740 4 780 28 820 12
+                    C860 2 900 30 940 14
+                    C980 4 1020 26 1060 12
+                    C1100 2 1140 28 1180 16
+                    L1200 18 L1200 36 L0 36 Z"
+                />
+                <path
+                  fill="none"
+                  stroke="#fffef8"
+                  strokeWidth="1.2"
+                  opacity="0.85"
+                  d="M0 18
+                    C40 6 70 28 110 14
+                    C150 2 180 30 220 16
+                    C260 4 300 26 340 12
+                    C380 0 420 32 460 18
+                    C500 6 540 28 580 10
+                    C620 0 660 30 700 16
+                    C740 4 780 28 820 12
+                    C860 2 900 30 940 14
+                    C980 4 1020 26 1060 12
+                    C1100 2 1140 28 1180 16
+                    L1200 18"
+                />
+              </svg>
+            </div>
           </div>
-        </div>
 
         {/* Handles de edición (solo dev) */}
         {import.meta.env.DEV &&

@@ -2,16 +2,44 @@ import { PLACEHOLDERS } from './data/content'
 import { ActSpark } from './components/acts/ActSpark'
 import { ActPlayground, type ConfigurationSummary } from './components/acts/ActPlayground'
 import { ActConfig } from './components/acts/ActConfig'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ActCta } from './components/acts/ActCta'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import gsap from 'gsap'
+
+gsap.registerPlugin(ScrollTrigger)
 
 export default function App() {
   const [configuration, setConfiguration] = useState<ConfigurationSummary>({ total: 0 })
-  const configurationComplete = ['Motherboard', 'Procesador', 'RAM', 'Almacenamiento', 'PSU', 'GPU', 'Ventiladores']
-    .every((component) => Boolean(configuration[component as keyof ConfigurationSummary]))
-  const scrollToConfiguration = () => {
-    document.getElementById('configuracion')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const [skippedAssembly, setSkippedAssembly] = useState(false)
+  const [pendingAct5Scroll, setPendingAct5Scroll] = useState(false)
+  const configurationComplete = [
+    'Motherboard',
+    'Procesador',
+    'RAM',
+    'Almacenamiento',
+    'PSU',
+    'GPU',
+    'Ventiladores',
+  ].every((component) => Boolean(configuration[component as keyof ConfigurationSummary]))
+  const canContinue = configurationComplete || skippedAssembly
+
+  const scrollToAct5Start = () => {
+    const el = document.getElementById('configuracion')
+    if (!el) return
+    // Inicio del Acto 5 (más arriba que un scrollIntoView suelto)
+    const y = el.getBoundingClientRect().top + window.scrollY - 8
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' })
+    window.setTimeout(() => ScrollTrigger.refresh(), 480)
   }
+
+  useEffect(() => {
+    if (!pendingAct5Scroll || !canContinue) return
+    setPendingAct5Scroll(false)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToAct5Start)
+    })
+  }, [pendingAct5Scroll, canContinue])
 
   return (
     <div className="min-h-screen bg-void text-paper">
@@ -21,7 +49,7 @@ export default function App() {
         </a>
         <nav className="hidden gap-6 text-xs tracking-[0.18em] uppercase sm:flex">
           <a href="#idea" className="opacity-70 transition hover:opacity-100">
-            Servicios
+            Idea
           </a>
           <a href="#configurador" className="opacity-70 transition hover:opacity-100">
             Armado
@@ -33,17 +61,24 @@ export default function App() {
       </header>
 
       <main>
-        {/* ===== ACTO 1–3 (deseo → idea → plano + rasgado) ===== */}
         <ActSpark />
-        {/* ===== ACTO 4 — playground ===== */}
-        <ActPlayground onConfigurationChange={setConfiguration} onAssemblyComplete={scrollToConfiguration} />
-        {!configurationComplete && (
-          <div className="relative z-10 mx-auto mb-12 max-w-6xl px-6 text-center text-sm text-paper/80 mt-8">
-            <p>Completa tu configuración para continuar.</p>
+        <ActPlayground
+          onConfigurationChange={setConfiguration}
+          onAssemblyComplete={() => {
+            setPendingAct5Scroll(true)
+          }}
+          onSkip={() => {
+            setSkippedAssembly(true)
+            setPendingAct5Scroll(true)
+          }}
+        />
+        {!canContinue && (
+          <div className="relative z-10 mx-auto mt-8 mb-8 max-w-6xl px-6 text-center text-sm text-paper/80">
+            <p>Completa tu configuración para continuar — o usa Saltar.</p>
           </div>
         )}
-        {configurationComplete && <ActConfig configuration={configuration} />}
-        {configurationComplete && <ActCta />}
+        {canContinue && <ActConfig configuration={configuration} />}
+        {canContinue && <ActCta />}
       </main>
     </div>
   )
