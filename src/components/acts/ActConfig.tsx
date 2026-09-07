@@ -48,7 +48,10 @@ export function ActConfig({ configuration }: { configuration: ConfigurationSumma
       gsap.set(markEls, { scale: 0, opacity: 0 })
       setCount(0)
 
-      // Empieza a subir cuando el Acto 5 asoma (antes del pin full)
+      // Empieza a subir cuando el Acto 5 asoma (antes del pin full).
+      // scrub:true (sin suavizado): al llegar a 'top top' el panel está EXACTO en 0
+      // y el empalme con el pin no brinca. Con scrub numérico el tween llega con
+      // retardo y el set del pin lo forzaba de golpe = salto brusco.
       gsap.to(oak, {
         yPercent: 0,
         ease: 'none',
@@ -56,7 +59,7 @@ export function ActConfig({ configuration }: { configuration: ConfigurationSumma
           trigger: section,
           start: 'top 95%',
           end: 'top top',
-          scrub: 0.55,
+          scrub: true,
           invalidateOnRefresh: true,
         },
       })
@@ -68,12 +71,13 @@ export function ActConfig({ configuration }: { configuration: ConfigurationSumma
           start: 'top top',
           end: () => `+=${window.innerHeight * 4.0}`,
           pin: true,
+          anticipatePin: 1,
           scrub: 0.7,
           invalidateOnRefresh: true,
         },
       })
 
-      // Por si el pre-scroll no alcanzó: asegurar panel arriba
+      // Red de seguridad: en el empalme el valor ya es 0, esto es no-op visual.
       tl.set(oak, { yPercent: 0 }, 0)
 
       // Texto izquierdo más dinámico (stagger)

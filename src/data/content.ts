@@ -1,15 +1,15 @@
 export const PLACEHOLDERS = {
   brand: 'CompuLab',
-  tagline: 'Armado & reparación de alto rendimiento',
-  phone: '+52 000 000 0000',
-  phoneHref: 'tel:+520000000000',
-  whatsapp: 'https://wa.me/520000000000',
-  email: 'hola@compulab.placeholder',
-  address: 'Taller — Ciudad, MX (placeholder)',
+  tagline: 'Armado & reparación de computadoras de alto rendimiento',
+  phone: '+52 813 041 6824',
+  phoneHref: 'tel:+528130416824',
+  whatsapp: 'https://wa.me/528130416824',
+  email: 'hola@compulab.com',
+  address: 'Softtek — Monterrey, NL',
   socials: [
-    { label: 'Instagram', href: '#' },
-    { label: 'Facebook', href: '#' },
-    { label: 'TikTok', href: '#' },
+    { label: 'Instagram', href: 'https://www.instagram.com/compulab' },
+    { label: 'Facebook', href: 'https://www.facebook.com/compulab' },
+    { label: 'TikTok', href: 'https://www.tiktok.com/@compulab' },
   ],
 } as const
 
@@ -28,9 +28,9 @@ export const PLAN_COPY = {
   lead: 'Armar aquí es una decisión con reglas — no un salto a ciegas.',
   items: [
     { title: 'Piezas compatibles', body: 'Nada a prueba y error.' },
-    { title: 'Tiempo claro', body: 'Sabes cuándo la tienes.' },
-    { title: 'Pruebas reales', body: 'Estabilidad antes de entregar.' },
-    { title: 'Garantía 1 mes', body: 'El trabajo se sostiene.' },
+    { title: 'Tiempo claro', body: 'Fecha de entrega desde el inicio.' },
+    { title: 'Pruebas reales', body: 'Estrés y temperatura antes de soltarla.' },
+    { title: 'Garantía 1 mes', body: 'Si algo falla, respondemos.' },
   ],
 } as const
 

@@ -1,4 +1,5 @@
-import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
@@ -13,10 +14,7 @@ import {
   DEFAULT_CONSTELLATION,
   loadConstellation,
   type ConstellationMap,
-  type Edge,
 } from '../../data/constellation'
-import { SparkPathEditor } from './SparkPathEditor'
-import { ConstellationEditor } from './ConstellationEditor'
 
 gsap.registerPlugin(ScrollTrigger, MotionPathPlugin)
 
@@ -141,7 +139,7 @@ function buildPathFromPhrases(
  * el Acto 4. Por eso la silueta, el ENTRA y la estela son los del Acto 1: no hay
  * nada duplicado.
  */
-export function ActSpark() {
+export function ActSpark({ playground }: { playground: ReactNode }) {
   const eyeMaskId = useId().replace(/:/g, '')
   const rootRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
@@ -176,30 +174,21 @@ export function ActSpark() {
   const tearEdgeRef = useRef<HTMLDivElement>(null)
   const paperSheetRef = useRef<HTMLDivElement>(null)
 
-  const [points, setPoints] = useState<SparkWaypoint[]>(() => loadSparkPath() ?? DEFAULT_SPARK_PATH)
-  const [placeMode, setPlaceMode] = useState(false)
-  const [selected, setSelected] = useState<number | null>(null)
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  /** El único Acto IV (playground) vive en dos docks, una sola instancia vía portal:
+   *  overlay = preview tras el papel durante el rasgado; flujo = sección real tras el pin. */
+  const [overlaySlot, setOverlaySlot] = useState<HTMLDivElement | null>(null)
+  const [flowSlot, setFlowSlot] = useState<HTMLDivElement | null>(null)
+  const [dockedInFlow, setDockedInFlow] = useState(false)
+  // Dirección de la última mudanza + top del playground antes de ella (coords viewport).
+  // Sirve para el traspaso sin salto: el flujo queda alineado donde estaba el preview.
+  const dockDir = useRef<'flow' | 'overlay' | null>(null)
+  const prevDockTop = useRef(0)
 
-  const [map, setMap] = useState<ConstellationMap>(
+  const [points, setPoints] = useState<SparkWaypoint[]>(() => loadSparkPath() ?? DEFAULT_SPARK_PATH)
+
+  const [map] = useState<ConstellationMap>(
     () => loadConstellation() ?? DEFAULT_CONSTELLATION,
   )
-  const [overlaySrc, setOverlaySrc] = useState<string | null>(null)
-  const [overlayOpacity, setOverlayOpacity] = useState(0)
-  const [, setOverlayOk] = useState(false)
-  const [starPlaceMode, setStarPlaceMode] = useState(false)
-  const [connectMode, setConnectMode] = useState(false)
-  const [starSelected, setStarSelected] = useState<number | null>(null)
-  const [starDragIndex, setStarDragIndex] = useState<number | null>(null)
-
-  const rebuildFromText = useCallback(() => {
-    const section = sectionRef.current
-    if (!section) return
-    const els = phraseRefs.current.filter(Boolean) as HTMLElement[]
-    if (els.length !== PHRASES.length) return
-    const next = buildPathFromPhrases(els, section, headAnchorRef.current)
-    setPoints(next)
-  }, [])
 
   const applyPathToSvg = useCallback((wp: SparkWaypoint[]) => {
     const path = pathRef.current
@@ -691,6 +680,21 @@ export function ActSpark() {
           pinSpacing: true,
           scrub: 0.85,
           invalidateOnRefresh: true,
+          // Al salir del pin, el playground se muda del preview al flujo (misma
+          // instancia). Se mide su top antes de mudar para realinear sin salto.
+          onLeave: () => {
+            const el = document.getElementById('configurador')
+            prevDockTop.current = el ? el.getBoundingClientRect().top : 0
+            dockDir.current = 'flow'
+            setDockedInFlow(true)
+          },
+          onLeaveBack: () => {
+            const el = document.getElementById('configurador')
+            prevDockTop.current = el ? el.getBoundingClientRect().top : 0
+            dockDir.current = 'overlay'
+            setDockedInFlow(false)
+          },
+          onRefresh: (self) => setDockedInFlow(self.progress >= 1),
         },
       })
 
@@ -829,11 +833,6 @@ export function ActSpark() {
         PLAN_MORPH,
       )
       idea.to(stars, { opacity: 0, scale: 0.4, duration: morphDur * 0.7, ease: 'none' }, PLAN_MORPH)
-      idea.to(
-        section.querySelectorAll('[data-star-handle]'),
-        { autoAlpha: 0, duration: morphDur * 0.4, ease: 'none' },
-        PLAN_MORPH,
-      )
       idea.to(edgeGlows, { opacity: 0, duration: morphDur * 0.5, ease: 'none' }, PLAN_MORPH)
       idea.to(
         edgeCores,
@@ -951,7 +950,9 @@ export function ActSpark() {
         TEAR_START,
       )
 
-      idea.set(ideaStage, { autoAlpha: 0 }, TEAR_END)
+      // Al terminar el rasgado se apaga el papel (no todo el stage):
+      // el tearReveal debe seguir visible porque hospeda el preview del playground.
+      idea.set([paperSheet, tearEdge], { autoAlpha: 0 }, TEAR_END)
     }, root)
 
     let resizeTimer: number | undefined
@@ -972,139 +973,23 @@ export function ActSpark() {
     }
   }, [points])
 
-  /** Modo edición constelación: no depende del scroll; fuerza escena visible y clickeable */
-  const constellationEditing = import.meta.env.DEV && (starPlaceMode || connectMode)
-
+  /** Traspaso sin salto al mudar el playground + recalibrar ScrollTriggers.
+   *  Sin esto, al 100% del rasgado el preview desaparece y queda un viewport
+   *  vacío hasta scrollear al flujo. Midiendo el top antes/después y compensando
+   *  el scroll, el playground SE MANTIENE en el mismo sitio (misma instancia).
+   *  useLayoutEffect: debe aplicarse antes del pintado, sin un frame intermedio. */
   useLayoutEffect(() => {
-    if (!import.meta.env.DEV) return
-    const ideaStage = ideaStageRef.current
-    const ideaLayout = ideaLayoutRef.current
-    const constSvg = constSvgRef.current
-    const section = sectionRef.current
-    if (!ideaStage || !ideaLayout || !constSvg || !section) return
-
-    if (!constellationEditing) return
-
-    gsap.set(ideaStage, { autoAlpha: 1 })
-    gsap.set(ideaLayout, { autoAlpha: 1 })
-    gsap.set(constSvg.querySelectorAll('[data-star]'), {
-      scale: 1,
-      opacity: 1,
-      transformOrigin: '50% 50%',
-    })
-    gsap.set(constSvg.querySelectorAll('[data-edge-core]'), {
-      opacity: 1,
-      strokeDashoffset: 0,
-    })
-    gsap.set(constSvg.querySelectorAll('[data-edge-glow]'), { opacity: 0.35, strokeDashoffset: 0 })
-    gsap.set(section.querySelectorAll('[data-star-handle]'), { autoAlpha: 1 })
-
-    ideaStage.scrollIntoView({ block: 'end', behavior: 'smooth' })
-  }, [constellationEditing, map.stars.length, map.edges.length])
-
-  const sectionToPct = (clientX: number, clientY: number): SparkWaypoint | null => {
-    const section = sectionRef.current
-    if (!section) return null
-    const r = section.getBoundingClientRect()
-    return {
-      x: Math.round((((clientX - r.left) / r.width) * 100) * 10) / 10,
-      y: Math.round((((clientY - r.top) / r.height) * 100) * 10) / 10,
-    }
-  }
-
-  const constStageToPct = (clientX: number, clientY: number) => {
-    const stage = constStageRef.current
-    if (!stage) return null
-    const r = stage.getBoundingClientRect()
-    return {
-      x: Math.round((((clientX - r.left) / r.width) * 100) * 10) / 10,
-      y: Math.round((((clientY - r.top) / r.height) * 100) * 10) / 10,
-    }
-  }
-
-  const onSectionPointerDown = (e: React.PointerEvent) => {
-    if (!import.meta.env.DEV) return
-    const target = e.target as HTMLElement
-    if (target.closest('[data-path-handle]')) return
-    if (target.closest('[data-idea-stage]')) return
-
-    if (placeMode) {
-      const p = sectionToPct(e.clientX, e.clientY)
-      if (!p) return
-      setPoints((prev) => [...prev, p])
-      setPlaceMode(false)
-    }
-  }
-
-  const onSectionPointerMove = (e: React.PointerEvent) => {
-    if (dragIndex !== null) {
-      const p = sectionToPct(e.clientX, e.clientY)
-      if (p) setPoints((prev) => prev.map((pt, i) => (i === dragIndex ? p : pt)))
-    }
-    if (starDragIndex !== null) {
-      const p = constStageToPct(e.clientX, e.clientY)
-      if (p) {
-        setMap((prev) => ({
-          ...prev,
-          stars: prev.stars.map((s, i) => (i === starDragIndex ? p : s)),
-        }))
+    if (dockDir.current) {
+      dockDir.current = null
+      const el = document.getElementById('configurador')
+      if (el) {
+        const delta = el.getBoundingClientRect().top - prevDockTop.current
+        if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: 'instant' })
       }
     }
-  }
-
-  const onSectionPointerUp = () => {
-    setDragIndex(null)
-    setStarDragIndex(null)
-  }
-
-  const onHandlePointerDown = (index: number, e: React.PointerEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    setSelected(index)
-    setDragIndex(index)
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-  }
-
-  const onConstStagePointerDown = (e: React.PointerEvent) => {
-    if (!import.meta.env.DEV) return
-    e.stopPropagation()
-    if ((e.target as HTMLElement).closest('[data-star-handle]')) return
-    if (!starPlaceMode) return
-    const p = constStageToPct(e.clientX, e.clientY)
-    if (!p) return
-    setMap((prev) => ({ ...prev, stars: [...prev.stars, p] }))
-    setStarPlaceMode(false)
-  }
-
-  const onStarClick = (index: number, e: React.PointerEvent) => {
-    e.stopPropagation()
-    if (!import.meta.env.DEV) return
-    if (connectMode) {
-      e.preventDefault()
-      if (starSelected === null) {
-        setStarSelected(index)
-        return
-      }
-      if (starSelected === index) {
-        setStarSelected(null)
-        return
-      }
-      const a = Math.min(starSelected, index)
-      const b = Math.max(starSelected, index)
-      setMap((prev) => {
-        const exists = prev.edges.some(([x, y]) => x === a && y === b)
-        const edges: Edge[] = exists
-          ? prev.edges.filter(([x, y]) => !(x === a && y === b))
-          : [...prev.edges, [a, b]]
-        return { ...prev, edges }
-      })
-      setStarSelected(null)
-      return
-    }
-    setStarSelected(index)
-    setStarDragIndex(index)
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-  }
+    const t = window.setTimeout(() => ScrollTrigger.refresh(), 60)
+    return () => window.clearTimeout(t)
+  }, [dockedInFlow])
 
   return (
     /* ACTO 1 + ACTO 2 INICIAN */
@@ -1114,9 +999,6 @@ export function ActSpark() {
         id="deseo"
         className="relative min-h-[320vh] overflow-hidden bg-void pb-[40vh]"
         aria-label="Acto I — El deseo"
-        onPointerDown={onSectionPointerDown}
-        onPointerMove={onSectionPointerMove}
-        onPointerUp={onSectionPointerUp}
       >
         <svg
           className="pointer-events-none absolute inset-0 z-0 h-full w-full"
@@ -1263,42 +1145,22 @@ export function ActSpark() {
           data-idea-stage
           role="region"
           aria-label="Acto II–III — La idea y el plan"
-      className={`absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible bg-transparent ${
-            constellationEditing ? 'pointer-events-auto' : 'pointer-events-none'
-          }`}
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible bg-transparent"
           style={{ ['--tear-y' as string]: 100 }}
         >
-          {/* Vista estable del siguiente acto. Vive dentro del mismo pin para que
-              el rasgado pueda revelarlo sin sacar #configurador del flujo. */}
+          {/* El único Acto IV se revela aquí durante el rasgado (preview recortado,
+              sin interacción: el scroll manda en el scrub) y al terminar el pin se
+              muda al flujo normal. Una sola instancia vía portal, sin duplicar WebGL. */}
           <div
             ref={tearRevealRef}
             className="absolute inset-0 z-0 overflow-hidden bg-void"
             aria-hidden
           >
             <div
-              className="absolute inset-x-0 mx-auto max-w-6xl px-6 transition-none md:px-10"
+              className="absolute inset-x-0 bottom-0"
               style={{ top: 'var(--reveal-top, 94%)' }}
             >
-              <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
-                Acto IV
-              </p>
-              <h2 className="max-w-3xl font-display text-4xl font-bold tracking-tight text-paper sm:text-5xl">
-                El taller se pone a trabajar
-              </h2>
-              <p className="mt-4 max-w-xl text-mist">
-                El plan ya está aprobado. Elige las piezas — o salta y sigue.
-              </p>
-              <div className="mt-8 grid h-[54vh] grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)] overflow-hidden rounded-sm border border-white/10 bg-fog/30">
-                <div className="relative border-r border-white/10 bg-black/25">
-                  <div className="absolute inset-8 rounded-sm border border-spark/15 bg-[radial-gradient(circle_at_50%_45%,rgba(250,204,21,0.09),transparent_48%)]" />
-                </div>
-                <div className="space-y-4 p-6">
-                  <div className="h-7 w-28 rounded-sm bg-white/10" />
-                  <div className="h-20 rounded-sm border border-white/10 bg-white/[0.025]" />
-                  <div className="h-20 rounded-sm border border-white/10 bg-white/[0.025]" />
-                  <div className="h-20 rounded-sm border border-white/10 bg-white/[0.025]" />
-                </div>
-              </div>
+              <div ref={setOverlaySlot} className="pointer-events-none h-full overflow-hidden pt-8" />
             </div>
           </div>
 
@@ -1334,19 +1196,8 @@ export function ActSpark() {
             >
               <div
                 ref={constStageRef}
-                className={`relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center ${
-                  constellationEditing ? 'pointer-events-auto cursor-crosshair ring-1 ring-spark/40' : ''
-                }`}
-                onPointerDown={onConstStagePointerDown}
+                className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center"
               >
-                {import.meta.env.DEV && overlaySrc && (
-                  <img
-                    src={overlaySrc}
-                    alt=""
-                    className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-                    style={{ opacity: overlayOpacity / 100 }}
-                  />
-                )}
                 <svg
                   ref={constSvgRef}
                   viewBox="0 0 100 100"
@@ -1406,20 +1257,6 @@ export function ActSpark() {
                     />
                   ))}
                 </svg>
-                {import.meta.env.DEV &&
-                  map.stars.map((s, i) => (
-                    <button
-                      key={`h-${i}`}
-                      type="button"
-                      data-star-handle
-                      aria-label={`Estrella ${i + 1}`}
-                      onPointerDown={(e) => onStarClick(i, e)}
-                      className={`pointer-events-auto absolute z-20 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-void shadow ${
-                        starSelected === i ? 'scale-125 bg-white' : 'bg-spark'
-                      }`}
-                      style={{ left: `${s.x}%`, top: `${s.y}%` }}
-                    />
-                  ))}
               </div>
 
               <div className="pointer-events-auto relative min-h-[20rem] flex items-center">
@@ -1558,58 +1395,16 @@ export function ActSpark() {
             </div>
           </div>
 
-        {/* Handles de edición (solo dev) */}
-        {import.meta.env.DEV &&
-          points.map((p, i) => (
-            <button
-              key={`handle-${i}`}
-              type="button"
-              data-path-handle
-              aria-label={`Punto ${i + 1}`}
-              onPointerDown={(e) => onHandlePointerDown(i, e)}
-              className={`absolute z-[20] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-void ${
-                selected === i ? 'bg-white scale-125' : 'bg-spark'
-              }`}
-              style={{ left: `${p.x}%`, top: `${p.y}%` }}
-            />
-          ))}
-
         <p className="pointer-events-none absolute top-[42vh] left-1/2 z-[5] -translate-x-1/2 text-[10px] tracking-[0.28em] text-mist/50 uppercase sm:text-xs">
           Desliza
         </p>
       </section>
 
-      {import.meta.env.DEV && (
-        <SparkPathEditor
-          points={points}
-          onChange={setPoints}
-          onRebuildFromText={rebuildFromText}
-          placeMode={placeMode}
-          onPlaceModeChange={setPlaceMode}
-          selected={selected}
-          onSelect={setSelected}
-        />
-      )}
-
-      {import.meta.env.DEV && (
-        <ConstellationEditor
-          map={map}
-          onChange={setMap}
-          overlaySrc={overlaySrc}
-          overlayOpacity={overlayOpacity}
-          onOverlaySrc={(src) => {
-            setOverlaySrc(src)
-            setOverlayOk(Boolean(src))
-          }}
-          onOverlayOpacity={setOverlayOpacity}
-          placeMode={starPlaceMode}
-          onPlaceModeChange={setStarPlaceMode}
-          connectMode={connectMode}
-          onConnectModeChange={setConnectMode}
-          selected={starSelected}
-          onSelect={setStarSelected}
-        />
-      )}
+      {/* Dock de flujo del único Acto IV: aquí vive el playground tras el pin. */}
+      <div ref={setFlowSlot} className="relative" />
+      {overlaySlot && flowSlot
+        ? createPortal(playground, dockedInFlow ? flowSlot : overlaySlot)
+        : null}
     </div>
     /* ACTO 1 + ACTO 2 + ACTO 3 TERMINAN */
   )
