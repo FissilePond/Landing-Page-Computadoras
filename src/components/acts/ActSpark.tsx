@@ -1280,7 +1280,7 @@ export function ActSpark() {
                         {PLAN_COPY.lead}
                       </p>
                     </div>
-                    <ul className="mt-8 space-y-3 border-t border-white/15 pt-6">
+                    <ul className="mt-8 space-y-3">
                       {PLAN_COPY.items.map((item) => (
                         <li
                           key={item.title}
