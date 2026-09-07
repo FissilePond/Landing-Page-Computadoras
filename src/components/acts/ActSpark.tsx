@@ -632,7 +632,8 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
       })
       gsap.set(tearReveal, { autoAlpha: 0 })
       gsap.set(tearEdge, { autoAlpha: 0 })
-      gsap.set(paperSheet, { y: 0, clipPath: 'inset(0 0 0% 0)' })
+      gsap.set(paperSheet, { y: 0, autoAlpha: 1, clipPath: 'none' })
+      paperSheet.style.clipPath = 'none'
       ideaStage.style.setProperty('--tear-p', '0')
       gsap.set(ideaStage, { autoAlpha: 1, backgroundColor: 'transparent' })
 
@@ -871,88 +872,16 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
         PLAN_STAMP_AT + 0.18,
       )
 
-      /* ========== Rasgado tipo Trevor Noah ==========
-         El frente cruza de izquierda→derecha. Detrás de él el plano conserva
-         solo la parte superior y deja visible una vista estable del Acto 4. */
-      const tearDur = Math.max(0.2, TEAR_END - TEAR_START)
-      idea.set(tearReveal, { autoAlpha: 1 }, TEAR_START)
-      const tearFiber = tearEdge.querySelector<SVGPathElement>('[data-tear-fiber]')
-      const tearHighlight = tearEdge.querySelector<SVGPathElement>('[data-tear-highlight]')
-
-      const tearYAt = (x: number, base: number, amplitude: number) => {
-        const broad = Math.sin(x * 0.18 + 0.8) * amplitude
-        const fine = Math.sin(x * 0.63 + 2.1) * amplitude * 0.42
-        const tooth = ((((Math.floor(x / 3.25) * 17) % 11) - 5) / 5) * amplitude * 0.32
-        const diagonal = -(x / 100) * 7.5
-        return gsap.utils.clamp(4.5, 96.5, base + diagonal + broad + fine + tooth)
-      }
-
-      const applyTearProgress = (p: number) => {
-        const t = gsap.utils.clamp(0, 1, p)
-        const headX = t * 100
-        const opening = gsap.parseEase('power1.inOut')(t)
-        const baseY = gsap.utils.interpolate(90, 14.5, opening)
-        const amplitude = gsap.utils.interpolate(0.9, 1.9, t)
-        const sampleCount = Math.max(1, Math.ceil(headX / 3.2))
-        const seam = Array.from({ length: sampleCount + 1 }, (_, i) => {
-          const x = i === sampleCount ? headX : (headX * i) / sampleCount
-          return { x, y: tearYAt(x, baseY, amplitude) }
-        })
-        const head = seam[seam.length - 1]
-        const clipPoints = [
-          '0% 0%',
-          '100% 0%',
-          '100% 100%',
-          `${head.x.toFixed(3)}% 100%`,
-          ...[...seam]
-            .reverse()
-            .map(({ x, y }) => `${x.toFixed(3)}% ${y.toFixed(3)}%`),
-          '0% 0%',
-        ]
-
-        paperSheet.style.clipPath = `polygon(${clipPoints.join(',')})`
-        ideaStage.style.setProperty('--tear-p', String(t))
-        tearReveal.style.setProperty(
-          '--reveal-top',
-          `${gsap.utils.clamp(13, 94, head.y + 5.5).toFixed(2)}%`,
-        )
-
-        const seamPath = seam
-          .map(({ x, y }, i) => `${i === 0 ? 'M' : 'L'} ${(x * 10).toFixed(1)} ${(y * 10).toFixed(1)}`)
-          .join(' ')
-        const fiberBottom = [...seam]
-          .reverse()
-          .map(({ x, y }, i) => {
-            const depth = 1.05 + Math.sin(x * 0.51 + i) * 0.28
-            return `L ${(x * 10).toFixed(1)} ${((y + depth) * 10).toFixed(1)}`
-          })
-          .join(' ')
-        tearFiber?.setAttribute('d', `${seamPath} ${fiberBottom} Z`)
-        tearHighlight?.setAttribute('d', seamPath)
-
-        gsap.set(tearEdge, { autoAlpha: t > 0.012 && t < 0.995 ? 1 : 0 })
-      }
-
-      gsap.set(paperSheet, { y: 0, clearProps: 'transform' })
-      applyTearProgress(0)
-
+      /* ========== Papersheet fijo (sin reveal por scroll) ==========
+         El papel del Acto 3 se queda fijo durante todo el tramo final del pin.
+         No hay rasgado ni preview del Acto 4: el playground aparece en flujo
+         tras el pin mediante el dock de flujo. */
+      gsap.set(paperSheet, { y: 0, autoAlpha: 1, clipPath: 'none' })
+      paperSheet.style.clipPath = 'none'
+      gsap.set([tearReveal, tearEdge], { autoAlpha: 0 })
       idea.set(ideaStage, { zIndex: 6 }, TEAR_START)
-
-      const tearProxy = { p: 0 }
-      idea.to(
-        tearProxy,
-        {
-          p: 1,
-          duration: tearDur,
-          ease: 'none',
-          onUpdate: () => applyTearProgress(tearProxy.p),
-        },
-        TEAR_START,
-      )
-
-      // Al terminar el rasgado se apaga el papel (no todo el stage):
-      // el tearReveal debe seguir visible porque hospeda el preview del playground.
-      idea.set([paperSheet, tearEdge], { autoAlpha: 0 }, TEAR_END)
+      // Tramo de scroll reservado al papersheet fijo: sin animación.
+      idea.to({}, { duration: Math.max(0.2, TEAR_END - TEAR_START) }, TEAR_START)
     }, root)
 
     let resizeTimer: number | undefined
@@ -1138,7 +1067,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
             ENTRA
           </p>
 
-        {/* ACTO 2–3 — última pantalla: idea → plano → rasgado */}
+        {/* ACTO 2–3 — última pantalla: idea → plano (papersheet fijo) */}
         <div
           ref={ideaStageRef}
           id="idea"
@@ -1148,9 +1077,9 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
           className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible bg-transparent"
           style={{ ['--tear-y' as string]: 100 }}
         >
-          {/* El único Acto IV se revela aquí durante el rasgado (preview recortado,
-              sin interacción: el scroll manda en el scrub) y al terminar el pin se
-              muda al flujo normal. Una sola instancia vía portal, sin duplicar WebGL. */}
+          {/* Slot de preview legado (oculto): el papersheet queda fijo y el
+              Acto IV vive en el dock de flujo tras el pin. Una sola instancia
+              vía portal, sin duplicar WebGL. */}
           <div
             ref={tearRevealRef}
             className="absolute inset-0 z-0 overflow-hidden bg-void"
@@ -1164,11 +1093,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
             </div>
           </div>
 
-          <div
-            ref={paperSheetRef}
-            className="absolute inset-0 z-[1] will-change-[clip-path]"
-            style={{ clipPath: 'inset(0% 0% 0% 0%)' }}
-          >
+          <div ref={paperSheetRef} className="absolute inset-0 z-[1]" style={{ clipPath: 'none' }}>
             <div
               ref={blueprintBgRef}
               className="absolute inset-0"
