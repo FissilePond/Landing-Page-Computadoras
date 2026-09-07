@@ -1325,6 +1325,61 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
         </p>
       </section>
 
+      {/* Papersheet rasgado fijo entre Acto 3 y Acto 4.
+          Tira estática de papel blueprint con borde inferior irregular que
+          corona el Acto 4. Sin scroll ni animación. */}
+      <div aria-hidden className="relative z-[40] h-[0px] -mb-px bg-void">
+        <svg
+          viewBox="0 0 1000 120"
+          preserveAspectRatio="none"
+          className="absolute top-[-125px] z-[40] block w-full"
+          style={{ filter: 'drop-shadow(0 10px 14px rgba(0,0,0,0.45))' }}
+        >
+          <defs>
+            <filter
+              id={`${eyeMaskId}-torn-static`}
+              x="-8%"
+              y="-20%"
+              width="116%"
+              height="140%"
+            >
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.018 0.11"
+                numOctaves="2"
+                seed="17"
+                result="noise"
+              />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="noise"
+                scale="7"
+                xChannelSelector="R"
+                yChannelSelector="B"
+              />
+            </filter>
+          </defs>
+          <path
+            className="cursor-grab"
+            d="M0,62 L50,70 L100,66 L150,74 L200,68 L250,78 L300,72 L350,82 L400,76 L450,68 L500,76 L550,70 L600,80 L650,74 L700,84 L750,76 L800,68 L850,78 L900,72 L950,80 L1000,74"
+            fill="none"
+            stroke="#eeeae1"
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M0,62 L50,70 L100,66 L150,74 L200,68 L250,78 L300,72 L350,82 L400,76 L450,68 L500,76 L550,70 L600,80 L650,74 L700,84 L750,76 L800,68 L850,78 L900,72 L950,80 L1000,74"
+            fill="none"
+            stroke="#fffef8"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.8"
+          />
+        </svg>
+      </div>
+
       {/* Dock de flujo del único Acto IV: aquí vive el playground tras el pin. */}
       <div ref={setFlowSlot} className="relative" />
       {overlaySlot && flowSlot

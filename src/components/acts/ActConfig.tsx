@@ -135,7 +135,7 @@ export function ActConfig({ configuration }: { configuration: ConfigurationSumma
         className="absolute inset-0 z-0 bg-[#1a100c] bg-cover bg-center"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(12,8,5,0.72), rgba(8,5,3,0.78)), url(/wood-desk.jpg)',
+            'linear-gradient(rgba(12,8,5,0.72), rgba(8,5,3,0.78)), url(/wood-oak.jpg)',
         }}
         aria-hidden
       />
