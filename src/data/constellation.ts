@@ -1,17 +1,107 @@
 export type Star = { x: number; y: number }
 export type Edge = [number, number]
 
-export type ConstellationMap = {
-  stars: Star[]
-  edges: Edge[]
-  /** Trayectorias (cadenas de índices). Cada una ≤ 6 puntos. */
-  trajectories?: number[][]
+/** Un recorrido: puntos en orden + cuánto tarda en dibujarse (unidades de la timeline pineada). */
+export type Trajectory = {
+  points: number[]
+  /** Duración del dibujo completo del trayecto (todos arrancan a la vez). */
+  duration: number
+  /** Si true, une el último punto con el primero. */
+  closed?: boolean
 }
 
-export const CONSTELLATION_STORAGE_KEY = 'magnumopus.act2.constellation.v3'
+export type ConstellationMap = {
+  stars: Star[]
+  trajectories: Trajectory[]
+  /** Derivado de trayectorias (pares consecutivos). */
+  edges: Edge[]
+}
 
-/** Constelación de la PC (puntos del usuario + trayectorias en capas) */
-export const DEFAULT_CONSTELLATION: ConstellationMap = {
+export const DEFAULT_TRAJ_DURATION = 0.28
+
+export function edgesFromTrajectories(trajectories: Trajectory[]): Edge[] {
+  const seen = new Set<string>()
+  const edges: Edge[] = []
+  for (const t of trajectories) {
+    const pts = t.points
+    if (pts.length < 2) continue
+    const pairs: [number, number][] = []
+    for (let i = 0; i < pts.length - 1; i++) pairs.push([pts[i], pts[i + 1]])
+    if (t.closed && pts.length >= 3) pairs.push([pts[pts.length - 1], pts[0]])
+    for (const [a0, b0] of pairs) {
+      if (a0 === b0) continue
+      const a = Math.min(a0, b0)
+      const b = Math.max(a0, b0)
+      const key = `${a},${b}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      edges.push([a, b])
+    }
+  }
+  return edges
+}
+
+/** Segmentos dibujables con índice de trayecto / segmento (para animar en paralelo). */
+export type TrajSegment = {
+  trajIndex: number
+  segIndex: number
+  segCount: number
+  duration: number
+  a: number
+  b: number
+}
+
+export function segmentsFromTrajectories(trajectories: Trajectory[]): TrajSegment[] {
+  const outSegs: TrajSegment[] = []
+  trajectories.forEach((t, trajIndex) => {
+    const pts = t.points
+    if (pts.length < 2) return
+    const pairs: [number, number][] = []
+    for (let i = 0; i < pts.length - 1; i++) pairs.push([pts[i], pts[i + 1]])
+    if (t.closed && pts.length >= 3) pairs.push([pts[pts.length - 1], pts[0]])
+    const valid = pairs.filter(([a, b]) => a !== b)
+    const segCount = valid.length
+    const duration = Math.max(0.04, t.duration || DEFAULT_TRAJ_DURATION)
+    valid.forEach(([a, b], segIndex) => {
+      outSegs.push({ trajIndex, segIndex, segCount, duration, a, b })
+    })
+  })
+  return outSegs
+}
+
+function asTrajectory(raw: unknown): Trajectory | null {
+  if (Array.isArray(raw) && raw.every((n) => typeof n === 'number')) {
+    return { points: raw as number[], duration: DEFAULT_TRAJ_DURATION }
+  }
+  if (raw && typeof raw === 'object' && Array.isArray((raw as Trajectory).points)) {
+    const t = raw as Trajectory
+    return {
+      points: t.points.filter((n) => typeof n === 'number'),
+      duration: typeof t.duration === 'number' && t.duration > 0 ? t.duration : DEFAULT_TRAJ_DURATION,
+      closed: Boolean(t.closed),
+    }
+  }
+  return null
+}
+
+export function normalizeConstellation(
+  raw: Partial<ConstellationMap> | null | undefined,
+): ConstellationMap {
+  const stars = Array.isArray(raw?.stars) ? raw!.stars.map((s) => ({ x: s.x, y: s.y })) : []
+  const trajectories = (Array.isArray(raw?.trajectories) ? raw!.trajectories : [])
+    .map(asTrajectory)
+    .filter((t): t is Trajectory => Boolean(t && t.points.length > 0))
+  const edges =
+    trajectories.length > 0
+      ? edgesFromTrajectories(trajectories)
+      : Array.isArray(raw?.edges)
+        ? (raw!.edges as Edge[])
+        : []
+  return { stars, trajectories, edges }
+}
+
+/** Constelación fijada (puntos + trayectos del Acto 2) */
+export const DEFAULT_CONSTELLATION: ConstellationMap = normalizeConstellation({
   stars: [
     { x: 18, y: 17.5 },
     { x: 54.5, y: 2.5 },
@@ -55,76 +145,17 @@ export const DEFAULT_CONSTELLATION: ConstellationMap = {
     { x: 22.2, y: 24.1 },
   ],
   trajectories: [
-    [0, 1, 2, 3, 4, 5],
-    [39, 11, 22, 23, 7, 8],
-    [8, 6, 39],
-    [34, 9, 25, 27, 28, 10],
-    [10, 35, 14, 15, 34],
-    [16, 32, 36, 24, 26, 29],
-    [29, 38, 37, 16],
-    [33, 21, 20, 17, 13],
-    [18, 31, 30, 19, 12],
+    { points: [0, 1, 2, 7, 3, 4, 5, 6], duration: 0.28, closed: true },
+    { points: [6, 8, 7], duration: 0.28 },
+    { points: [8, 11, 1], duration: 0.28 },
+    { points: [23, 22, 25, 24, 23], duration: 0.28 },
+    { points: [15, 14, 37, 13, 12, 16, 15], duration: 0.28 },
+    { points: [8, 10, 38, 17, 36, 9, 11], duration: 0.28 },
+    { points: [32, 33, 31, 30, 32], duration: 0.28 },
+    { points: [26, 29, 28, 27, 26], duration: 0.28 },
+    { points: [39, 11, 8], duration: 0.28 },
+    { points: [34, 39, 11, 9, 36, 34], duration: 0.28 },
+    { points: [21, 18, 19, 20, 21], duration: 0.28 },
+    { points: [6, 35, 38], duration: 0.28 },
   ],
-  edges: [
-    [0, 1],
-    [1, 2],
-    [2, 3],
-    [3, 4],
-    [4, 5],
-    [0, 5],
-    [11, 39],
-    [11, 22],
-    [22, 23],
-    [7, 23],
-    [7, 8],
-    [6, 8],
-    [6, 39],
-    [9, 34],
-    [9, 25],
-    [25, 27],
-    [27, 28],
-    [10, 28],
-    [10, 35],
-    [14, 35],
-    [14, 15],
-    [15, 34],
-    [16, 32],
-    [32, 36],
-    [24, 36],
-    [24, 26],
-    [26, 29],
-    [29, 38],
-    [37, 38],
-    [16, 37],
-    [21, 33],
-    [20, 21],
-    [17, 20],
-    [13, 17],
-    [13, 33],
-    [18, 31],
-    [30, 31],
-    [19, 30],
-    [12, 19],
-    [12, 18],
-  ],
-}
-
-export function loadConstellation(): ConstellationMap | null {
-  try {
-    const raw = localStorage.getItem(CONSTELLATION_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as ConstellationMap
-    if (!Array.isArray(parsed.stars) || !Array.isArray(parsed.edges)) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-export function saveConstellation(map: ConstellationMap) {
-  localStorage.setItem(CONSTELLATION_STORAGE_KEY, JSON.stringify(map))
-}
-
-export function clearConstellation() {
-  localStorage.removeItem(CONSTELLATION_STORAGE_KEY)
-}
+})

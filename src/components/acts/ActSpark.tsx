@@ -5,18 +5,13 @@ import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 import { IDEA_COPY, PLAN_COPY } from '../../data/content'
 import {
   DEFAULT_SPARK_PATH,
-  loadSparkPath,
   waypointsToSmoothPathD,
   type SparkWaypoint,
 } from '../../data/sparkPath'
 import {
   DEFAULT_CONSTELLATION,
-  loadConstellation,
-  type ConstellationMap,
-  type Edge,
+  segmentsFromTrajectories,
 } from '../../data/constellation'
-import { SparkPathEditor } from './SparkPathEditor'
-import { ConstellationEditor } from './ConstellationEditor'
 
 gsap.registerPlugin(ScrollTrigger, MotionPathPlugin)
 
@@ -90,47 +85,6 @@ const HOT_GLOW_BG =
 
 type TrailPoint = { x: number; y: number; born: number }
 
-function pctInSection(
-  el: HTMLElement,
-  section: HTMLElement,
-  anchor: 'start' | 'end' | 'center',
-): SparkWaypoint {
-  const s = section.getBoundingClientRect()
-  const r = el.getBoundingClientRect()
-  const y = ((r.top + r.height / 2 - s.top) / s.height) * 100
-  if (anchor === 'center') {
-    return { x: ((r.left + r.width / 2 - s.left) / s.width) * 100, y }
-  }
-  if (anchor === 'start') {
-    return { x: ((r.left - s.left) / s.width) * 100 + 0.8, y }
-  }
-  return { x: ((r.right - s.left) / s.width) * 100 - 0.8, y }
-}
-
-/** Primera→última letra por frase (zigzag L/R), luego cabeza */
-function buildPathFromPhrases(
-  phraseEls: HTMLElement[],
-  section: HTMLElement,
-  headEl: HTMLElement | null,
-): SparkWaypoint[] {
-  const points: SparkWaypoint[] = []
-  phraseEls.forEach((el) => {
-    points.push(pctInSection(el, section, 'start'))
-    points.push(pctInSection(el, section, 'end'))
-  })
-  if (headEl) {
-    const mid = pctInSection(headEl, section, 'center')
-    points.push({ x: mid.x, y: mid.y - 2 })
-    points.push({ x: mid.x, y: mid.y + 1 })
-  } else {
-    points.push({ x: 50, y: 88 }, { x: 50, y: 92 })
-  }
-  return points.map((p) => ({
-    x: Math.round(p.x * 10) / 10,
-    y: Math.round(p.y * 10) / 10,
-  }))
-}
-
 /**
  * ACTO 1 (el deseo) + ACTO 2 (la idea) + ACTO 3 (el plan) como una sola secuencia.
  *
@@ -166,7 +120,6 @@ export function ActSpark() {
   const ideaStageRef = useRef<HTMLDivElement>(null)
   const splitLayerRef = useRef<HTMLDivElement>(null)
   const ideaLayoutRef = useRef<HTMLDivElement>(null)
-  const constStageRef = useRef<HTMLDivElement>(null)
   const constSvgRef = useRef<SVGSVGElement>(null)
   const copyRef = useRef<HTMLDivElement>(null)
   const blueprintBgRef = useRef<HTMLDivElement>(null)
@@ -176,54 +129,16 @@ export function ActSpark() {
   const tearEdgeRef = useRef<HTMLDivElement>(null)
   const paperSheetRef = useRef<HTMLDivElement>(null)
 
-  const [points, setPoints] = useState<SparkWaypoint[]>(() => loadSparkPath() ?? DEFAULT_SPARK_PATH)
-  const [placeMode, setPlaceMode] = useState(false)
-  const [selected, setSelected] = useState<number | null>(null)
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
-
-  const [map, setMap] = useState<ConstellationMap>(
-    () => loadConstellation() ?? DEFAULT_CONSTELLATION,
-  )
-  const [overlaySrc, setOverlaySrc] = useState<string | null>(null)
-  const [overlayOpacity, setOverlayOpacity] = useState(0)
-  const [, setOverlayOk] = useState(false)
-  const [starPlaceMode, setStarPlaceMode] = useState(false)
-  const [connectMode, setConnectMode] = useState(false)
-  const [starSelected, setStarSelected] = useState<number | null>(null)
-  const [starDragIndex, setStarDragIndex] = useState<number | null>(null)
-
-  const rebuildFromText = useCallback(() => {
-    const section = sectionRef.current
-    if (!section) return
-    const els = phraseRefs.current.filter(Boolean) as HTMLElement[]
-    if (els.length !== PHRASES.length) return
-    const next = buildPathFromPhrases(els, section, headAnchorRef.current)
-    setPoints(next)
-  }, [])
+  const [points] = useState<SparkWaypoint[]>(DEFAULT_SPARK_PATH)
+  const map = DEFAULT_CONSTELLATION
+  const trajSegments = segmentsFromTrajectories(map.trajectories)
+  const trajKey = JSON.stringify(map.trajectories)
 
   const applyPathToSvg = useCallback((wp: SparkWaypoint[]) => {
     const path = pathRef.current
     if (!path) return
     path.setAttribute('d', waypointsToSmoothPathD(wp))
   }, [])
-
-  useLayoutEffect(() => {
-    const section = sectionRef.current
-    if (!section) return
-
-    // Si no hay path guardado, medir textos
-    const stored = loadSparkPath()
-    if (!stored) {
-      const els = phraseRefs.current.filter(Boolean) as HTMLElement[]
-      if (els.length === PHRASES.length) {
-        const measured = buildPathFromPhrases(els, section, headAnchorRef.current)
-        setPoints(measured)
-        applyPathToSvg(measured)
-        return
-      }
-    }
-    applyPathToSvg(points)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- solo bootstrap
 
   useLayoutEffect(() => {
     applyPathToSvg(points)
@@ -787,17 +702,21 @@ export function ActSpark() {
         )
       })
 
-      const DRAW = 0.055
-      const GAP = 0.038
+      /* Todos los trayectos arrancan juntos; cada uno dura lo suyo (segmentos en cadena). */
+      const DRAW_AT = 0.82
       edgeCores.forEach((core, i) => {
         const glow = edgeGlows[i]
-        const at = 0.82 + i * GAP
+        const seg = trajSegments[i]
+        const segCount = Math.max(1, seg?.segCount ?? 1)
+        const totalDur = Math.max(0.04, seg?.duration ?? 0.28)
+        const segDur = totalDur / segCount
+        const at = DRAW_AT + (seg?.segIndex ?? 0) * segDur
         const drawTo = (el: SVGLineElement) => {
           const len = () => Math.max(el.getTotalLength(), 0.001)
           idea.fromTo(
             el,
             { strokeDasharray: len, strokeDashoffset: len },
-            { strokeDashoffset: 0, duration: DRAW, ease: 'none' },
+            { strokeDashoffset: 0, duration: segDur, ease: 'none' },
             at,
           )
         }
@@ -829,11 +748,6 @@ export function ActSpark() {
         PLAN_MORPH,
       )
       idea.to(stars, { opacity: 0, scale: 0.4, duration: morphDur * 0.7, ease: 'none' }, PLAN_MORPH)
-      idea.to(
-        section.querySelectorAll('[data-star-handle]'),
-        { autoAlpha: 0, duration: morphDur * 0.4, ease: 'none' },
-        PLAN_MORPH,
-      )
       idea.to(edgeGlows, { opacity: 0, duration: morphDur * 0.5, ease: 'none' }, PLAN_MORPH)
       idea.to(
         edgeCores,
@@ -970,141 +884,7 @@ export function ActSpark() {
       gsap.ticker.remove(onFrame)
       ctx.revert()
     }
-  }, [points])
-
-  /** Modo edición constelación: no depende del scroll; fuerza escena visible y clickeable */
-  const constellationEditing = import.meta.env.DEV && (starPlaceMode || connectMode)
-
-  useLayoutEffect(() => {
-    if (!import.meta.env.DEV) return
-    const ideaStage = ideaStageRef.current
-    const ideaLayout = ideaLayoutRef.current
-    const constSvg = constSvgRef.current
-    const section = sectionRef.current
-    if (!ideaStage || !ideaLayout || !constSvg || !section) return
-
-    if (!constellationEditing) return
-
-    gsap.set(ideaStage, { autoAlpha: 1 })
-    gsap.set(ideaLayout, { autoAlpha: 1 })
-    gsap.set(constSvg.querySelectorAll('[data-star]'), {
-      scale: 1,
-      opacity: 1,
-      transformOrigin: '50% 50%',
-    })
-    gsap.set(constSvg.querySelectorAll('[data-edge-core]'), {
-      opacity: 1,
-      strokeDashoffset: 0,
-    })
-    gsap.set(constSvg.querySelectorAll('[data-edge-glow]'), { opacity: 0.35, strokeDashoffset: 0 })
-    gsap.set(section.querySelectorAll('[data-star-handle]'), { autoAlpha: 1 })
-
-    ideaStage.scrollIntoView({ block: 'end', behavior: 'smooth' })
-  }, [constellationEditing, map.stars.length, map.edges.length])
-
-  const sectionToPct = (clientX: number, clientY: number): SparkWaypoint | null => {
-    const section = sectionRef.current
-    if (!section) return null
-    const r = section.getBoundingClientRect()
-    return {
-      x: Math.round((((clientX - r.left) / r.width) * 100) * 10) / 10,
-      y: Math.round((((clientY - r.top) / r.height) * 100) * 10) / 10,
-    }
-  }
-
-  const constStageToPct = (clientX: number, clientY: number) => {
-    const stage = constStageRef.current
-    if (!stage) return null
-    const r = stage.getBoundingClientRect()
-    return {
-      x: Math.round((((clientX - r.left) / r.width) * 100) * 10) / 10,
-      y: Math.round((((clientY - r.top) / r.height) * 100) * 10) / 10,
-    }
-  }
-
-  const onSectionPointerDown = (e: React.PointerEvent) => {
-    if (!import.meta.env.DEV) return
-    const target = e.target as HTMLElement
-    if (target.closest('[data-path-handle]')) return
-    if (target.closest('[data-idea-stage]')) return
-
-    if (placeMode) {
-      const p = sectionToPct(e.clientX, e.clientY)
-      if (!p) return
-      setPoints((prev) => [...prev, p])
-      setPlaceMode(false)
-    }
-  }
-
-  const onSectionPointerMove = (e: React.PointerEvent) => {
-    if (dragIndex !== null) {
-      const p = sectionToPct(e.clientX, e.clientY)
-      if (p) setPoints((prev) => prev.map((pt, i) => (i === dragIndex ? p : pt)))
-    }
-    if (starDragIndex !== null) {
-      const p = constStageToPct(e.clientX, e.clientY)
-      if (p) {
-        setMap((prev) => ({
-          ...prev,
-          stars: prev.stars.map((s, i) => (i === starDragIndex ? p : s)),
-        }))
-      }
-    }
-  }
-
-  const onSectionPointerUp = () => {
-    setDragIndex(null)
-    setStarDragIndex(null)
-  }
-
-  const onHandlePointerDown = (index: number, e: React.PointerEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    setSelected(index)
-    setDragIndex(index)
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-  }
-
-  const onConstStagePointerDown = (e: React.PointerEvent) => {
-    if (!import.meta.env.DEV) return
-    e.stopPropagation()
-    if ((e.target as HTMLElement).closest('[data-star-handle]')) return
-    if (!starPlaceMode) return
-    const p = constStageToPct(e.clientX, e.clientY)
-    if (!p) return
-    setMap((prev) => ({ ...prev, stars: [...prev.stars, p] }))
-    setStarPlaceMode(false)
-  }
-
-  const onStarClick = (index: number, e: React.PointerEvent) => {
-    e.stopPropagation()
-    if (!import.meta.env.DEV) return
-    if (connectMode) {
-      e.preventDefault()
-      if (starSelected === null) {
-        setStarSelected(index)
-        return
-      }
-      if (starSelected === index) {
-        setStarSelected(null)
-        return
-      }
-      const a = Math.min(starSelected, index)
-      const b = Math.max(starSelected, index)
-      setMap((prev) => {
-        const exists = prev.edges.some(([x, y]) => x === a && y === b)
-        const edges: Edge[] = exists
-          ? prev.edges.filter(([x, y]) => !(x === a && y === b))
-          : [...prev.edges, [a, b]]
-        return { ...prev, edges }
-      })
-      setStarSelected(null)
-      return
-    }
-    setStarSelected(index)
-    setStarDragIndex(index)
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-  }
+  }, [points, trajKey])
 
   return (
     /* ACTO 1 + ACTO 2 INICIAN */
@@ -1114,9 +894,6 @@ export function ActSpark() {
         id="deseo"
         className="relative min-h-[320vh] overflow-hidden bg-void pb-[40vh]"
         aria-label="Acto I — El deseo"
-        onPointerDown={onSectionPointerDown}
-        onPointerMove={onSectionPointerMove}
-        onPointerUp={onSectionPointerUp}
       >
         <svg
           className="pointer-events-none absolute inset-0 z-0 h-full w-full"
@@ -1263,9 +1040,7 @@ export function ActSpark() {
           data-idea-stage
           role="region"
           aria-label="Acto II–III — La idea y el plan"
-      className={`absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible bg-transparent ${
-            constellationEditing ? 'pointer-events-auto' : 'pointer-events-none'
-          }`}
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-screen overflow-visible bg-transparent"
           style={{ ['--tear-y' as string]: 100 }}
         >
           {/* Vista estable del siguiente acto. Vive dentro del mismo pin para que
@@ -1332,21 +1107,7 @@ export function ActSpark() {
               ref={ideaLayoutRef}
               className="absolute inset-0 z-[2] mx-auto grid max-w-6xl items-center gap-8 px-6 md:px-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16"
             >
-              <div
-                ref={constStageRef}
-                className={`relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center ${
-                  constellationEditing ? 'pointer-events-auto cursor-crosshair ring-1 ring-spark/40' : ''
-                }`}
-                onPointerDown={onConstStagePointerDown}
-              >
-                {import.meta.env.DEV && overlaySrc && (
-                  <img
-                    src={overlaySrc}
-                    alt=""
-                    className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-                    style={{ opacity: overlayOpacity / 100 }}
-                  />
-                )}
+              <div className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center">
                 <svg
                   ref={constSvgRef}
                   viewBox="0 0 100 100"
@@ -1364,9 +1125,9 @@ export function ActSpark() {
                       <feGaussianBlur in="SourceGraphic" stdDeviation="0.32" />
                     </filter>
                   </defs>
-                  {map.edges.map(([a, b], i) => {
-                    const sa = map.stars[a]
-                    const sb = map.stars[b]
+                  {trajSegments.map((seg, i) => {
+                    const sa = map.stars[seg.a]
+                    const sb = map.stars[seg.b]
                     if (!sa || !sb) return null
                     const shared = {
                       x1: sa.x,
@@ -1377,9 +1138,11 @@ export function ActSpark() {
                       strokeLinecap: 'round' as const,
                     }
                     return (
-                      <g key={`edge-${i}`}>
+                      <g key={`edge-${seg.trajIndex}-${seg.segIndex}-${i}`}>
                         <line
                           data-edge-glow
+                          data-traj={seg.trajIndex}
+                          data-seg={seg.segIndex}
                           {...shared}
                           strokeWidth="0.62"
                           opacity={0.38}
@@ -1387,6 +1150,8 @@ export function ActSpark() {
                         />
                         <line
                           data-edge-core
+                          data-traj={seg.trajIndex}
+                          data-seg={seg.segIndex}
                           {...shared}
                           strokeWidth="0.28"
                           opacity={1}
@@ -1406,20 +1171,6 @@ export function ActSpark() {
                     />
                   ))}
                 </svg>
-                {import.meta.env.DEV &&
-                  map.stars.map((s, i) => (
-                    <button
-                      key={`h-${i}`}
-                      type="button"
-                      data-star-handle
-                      aria-label={`Estrella ${i + 1}`}
-                      onPointerDown={(e) => onStarClick(i, e)}
-                      className={`pointer-events-auto absolute z-20 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-void shadow ${
-                        starSelected === i ? 'scale-125 bg-white' : 'bg-spark'
-                      }`}
-                      style={{ left: `${s.x}%`, top: `${s.y}%` }}
-                    />
-                  ))}
               </div>
 
               <div className="pointer-events-auto relative min-h-[20rem] flex items-center">
@@ -1558,58 +1309,10 @@ export function ActSpark() {
             </div>
           </div>
 
-        {/* Handles de edición (solo dev) */}
-        {import.meta.env.DEV &&
-          points.map((p, i) => (
-            <button
-              key={`handle-${i}`}
-              type="button"
-              data-path-handle
-              aria-label={`Punto ${i + 1}`}
-              onPointerDown={(e) => onHandlePointerDown(i, e)}
-              className={`absolute z-[20] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-void ${
-                selected === i ? 'bg-white scale-125' : 'bg-spark'
-              }`}
-              style={{ left: `${p.x}%`, top: `${p.y}%` }}
-            />
-          ))}
-
         <p className="pointer-events-none absolute top-[42vh] left-1/2 z-[5] -translate-x-1/2 text-[10px] tracking-[0.28em] text-mist/50 uppercase sm:text-xs">
           Desliza
         </p>
       </section>
-
-      {import.meta.env.DEV && (
-        <SparkPathEditor
-          points={points}
-          onChange={setPoints}
-          onRebuildFromText={rebuildFromText}
-          placeMode={placeMode}
-          onPlaceModeChange={setPlaceMode}
-          selected={selected}
-          onSelect={setSelected}
-        />
-      )}
-
-      {import.meta.env.DEV && (
-        <ConstellationEditor
-          map={map}
-          onChange={setMap}
-          overlaySrc={overlaySrc}
-          overlayOpacity={overlayOpacity}
-          onOverlaySrc={(src) => {
-            setOverlaySrc(src)
-            setOverlayOk(Boolean(src))
-          }}
-          onOverlayOpacity={setOverlayOpacity}
-          placeMode={starPlaceMode}
-          onPlaceModeChange={setStarPlaceMode}
-          connectMode={connectMode}
-          onConnectModeChange={setConnectMode}
-          selected={starSelected}
-          onSelect={setStarSelected}
-        />
-      )}
     </div>
     /* ACTO 1 + ACTO 2 + ACTO 3 TERMINAN */
   )
