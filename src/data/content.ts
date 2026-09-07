@@ -1,11 +1,11 @@
 export const PLACEHOLDERS = {
   brand: 'CompuLab',
   tagline: 'Armado & reparación de alto rendimiento',
-  phone: '+52 000 000 0000',
-  phoneHref: 'tel:+520000000000',
-  whatsapp: 'https://wa.me/520000000000',
-  email: 'hola@compulab.placeholder',
-  address: 'Taller — Ciudad, MX (placeholder)',
+  phone: '+52 81 2697 6226',
+  phoneHref: 'tel:+528126976226',
+  whatsapp: 'https://wa.me/528126976226',
+  email: 'hola@compulab.com',
+  address: 'Pamplona 218, Iturbide — San Nicolas de los Garza, NL.',
   socials: [
     { label: 'Instagram', href: '#' },
     { label: 'Facebook', href: '#' },
@@ -17,8 +17,8 @@ export const PLACEHOLDERS = {
 export const IDEA_COPY = {
   kicker: 'Acto II',
   /** Continúa la lectura del Acto 1 (“Y que al final…” → ENTRA). Temporal. */
-  title: 'sabes para qué la quieres',
-  items: ['Crear', 'Jugar', 'Trabajar', 'Recuperar'] as const,
+  title: '¿Para qué la usarías?',
+  items: ['Crear', 'Jugar', 'Trabajar', 'Tu compañera de batalla.'] as const,
 } as const
 
 /** Acto III — el plan: por qué con CompuLab (pragmático) + sello = transacción */

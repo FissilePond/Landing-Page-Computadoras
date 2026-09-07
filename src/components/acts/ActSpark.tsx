@@ -456,9 +456,6 @@ export function ActSpark() {
       const sy = sp.top + sp.height / 2
       const dist = Math.hypot(sx - (hr.left + hr.width / 2), sy - (hr.top + hr.height / 2))
 
-      const st = animRef.current.st
-      const progress = st?.progress ?? 0
-
       const light = gsap.utils.clamp(
         0,
         1,
@@ -506,10 +503,8 @@ export function ActSpark() {
         showEnter()
       }
 
-      // Solo soltar si realmente subes el Acto 1 (lejos de la cabeza).
-      // No usar histéresis relativa al latch: el pin puede reportar progress 0
-      // y eso siempre ganaba a cualquier umbral tipo latch-0.08.
-      if (enterLatched && !ideaPinActive() && progress < 0.65) {
+      // Depende de la luz: si se aleja de la silueta, ENTRA se va (también al subir scroll)
+      if (enterLatched && !ideaPinActive() && absorb < 0.4) {
         enterLatched = false
         hideEnter()
       }
@@ -519,12 +514,12 @@ export function ActSpark() {
       const pinOn = ideaPinActive()
       if (!pinOn) enterRescuedForPin = false
 
-      // Pin activo + hide que ganó la carrera: rescate solo ANTES del fade de ENTRA
+      // Pin activo + hide que ganó la carrera: rescate solo ANTES de hundir ENTRA
       if (
         pinOn &&
         enterLatched &&
         !enterRescuedForPin &&
-        (ideaTl?.time() ?? 0) < 0.36 &&
+        (ideaTl?.time() ?? 0) < 0.14 &&
         (enterHideTween || (gsap.getProperty(enter, 'autoAlpha') as number) < 0.05)
       ) {
         enterRescuedForPin = true
@@ -678,18 +673,17 @@ export function ActSpark() {
         0,
       )
 
-      // ENTRA por encima del ideaStage (z-6) para poder desvanecerse a la vista
-      gsap.set(enter, { zIndex: 8 })
+      // ENTRA vive en exitWorld: baja con la silueta y se apaga en el mismo gesto
+      gsap.set(enter, { y: 0 })
       ideaTl.to(
         enter,
         {
           autoAlpha: 0,
-          filter: 'blur(12px)',
-          y: -20,
-          duration: 0.55,
+          filter: 'blur(8px)',
+          duration: 0.28,
           ease: 'none',
         },
-        0.38,
+        0.14,
       )
 
       // Sube al centro, saliendo de la cabeza, mientras la silueta se hunde
@@ -1050,7 +1044,7 @@ export function ActSpark() {
           ))}
         </div>
 
-        {/* Silueta y ENTRA del Acto 1. En el Acto 2 se hunden juntos, sin redibujarse. */}
+        {/* Silueta + ENTRA: en Acto 2 se hunden juntos */}
         <div ref={exitWorldRef} className="pointer-events-none absolute inset-0 z-[3]">
           <div
             ref={silWrapRef}
@@ -1085,15 +1079,14 @@ export function ActSpark() {
               </g>
             </svg>
           </div>
-        </div>
 
-          {/* ENTRA fuera de exitWorld: la silueta puede hundirse sin llevárselo */}
           <p
             ref={enterRef}
-            className="pointer-events-none absolute left-1/2 top-[266vh] z-[8] -translate-x-1/2 font-display text-4xl font-extrabold tracking-[0.32em] text-spark sm:text-6xl md:text-7xl"
+            className="pointer-events-none absolute left-1/2 top-[266vh] z-[1] -translate-x-1/2 font-display text-4xl font-extrabold tracking-[0.32em] text-spark sm:text-6xl md:text-7xl"
           >
             ENTRA
           </p>
+        </div>
 
         {/* ACTO 2–3 — última pantalla: idea → plano → rasgado */}
         <div
