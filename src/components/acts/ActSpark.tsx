@@ -5,6 +5,7 @@ import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 import { IDEA_COPY, PLAN_COPY } from '../../data/content'
 import {
   DEFAULT_SPARK_PATH,
+  loadSparkPath,
   waypointsToSmoothPathD,
   type SparkWaypoint,
 } from '../../data/sparkPath'
@@ -85,6 +86,47 @@ const HOT_GLOW_BG =
 
 type TrailPoint = { x: number; y: number; born: number }
 
+function pctInSection(
+  el: HTMLElement,
+  section: HTMLElement,
+  anchor: 'start' | 'end' | 'center',
+): SparkWaypoint {
+  const s = section.getBoundingClientRect()
+  const r = el.getBoundingClientRect()
+  const y = ((r.top + r.height / 2 - s.top) / s.height) * 100
+  if (anchor === 'center') {
+    return { x: ((r.left + r.width / 2 - s.left) / s.width) * 100, y }
+  }
+  if (anchor === 'start') {
+    return { x: ((r.left - s.left) / s.width) * 100 + 0.8, y }
+  }
+  return { x: ((r.right - s.left) / s.width) * 100 - 0.8, y }
+}
+
+/** Primera→última letra por frase (zigzag L/R), luego cabeza */
+function buildPathFromPhrases(
+  phraseEls: HTMLElement[],
+  section: HTMLElement,
+  headEl: HTMLElement | null,
+): SparkWaypoint[] {
+  const points: SparkWaypoint[] = []
+  phraseEls.forEach((el) => {
+    points.push(pctInSection(el, section, 'start'))
+    points.push(pctInSection(el, section, 'end'))
+  })
+  if (headEl) {
+    const mid = pctInSection(headEl, section, 'center')
+    points.push({ x: mid.x, y: mid.y - 2 })
+    points.push({ x: mid.x, y: mid.y + 1 })
+  } else {
+    points.push({ x: 50, y: 88 }, { x: 50, y: 92 })
+  }
+  return points.map((p) => ({
+    x: Math.round(p.x * 10) / 10,
+    y: Math.round(p.y * 10) / 10,
+  }))
+}
+
 /**
  * ACTO 1 (el deseo) + ACTO 2 (la idea) + ACTO 3 (el plan) como una sola secuencia.
  *
@@ -129,7 +171,9 @@ export function ActSpark() {
   const tearEdgeRef = useRef<HTMLDivElement>(null)
   const paperSheetRef = useRef<HTMLDivElement>(null)
 
-  const [points] = useState<SparkWaypoint[]>(DEFAULT_SPARK_PATH)
+  const [points, setPoints] = useState<SparkWaypoint[]>(
+    () => loadSparkPath() ?? DEFAULT_SPARK_PATH,
+  )
   const map = DEFAULT_CONSTELLATION
   const trajSegments = segmentsFromTrajectories(map.trajectories)
   const trajKey = JSON.stringify(map.trajectories)
@@ -139,6 +183,24 @@ export function ActSpark() {
     if (!path) return
     path.setAttribute('d', waypointsToSmoothPathD(wp))
   }, [])
+
+  useLayoutEffect(() => {
+    const section = sectionRef.current
+    if (!section) return
+
+    // Si no hay path guardado, medir textos → cabeza (así ENTRA engancha bien)
+    const stored = loadSparkPath()
+    if (!stored) {
+      const els = phraseRefs.current.filter(Boolean) as HTMLElement[]
+      if (els.length === PHRASES.length) {
+        const measured = buildPathFromPhrases(els, section, headAnchorRef.current)
+        setPoints(measured)
+        applyPathToSvg(measured)
+        return
+      }
+    }
+    applyPathToSvg(points)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- solo bootstrap
 
   useLayoutEffect(() => {
     applyPathToSvg(points)
