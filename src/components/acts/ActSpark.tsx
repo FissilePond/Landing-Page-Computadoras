@@ -12,8 +12,7 @@ import {
 } from '../../data/sparkPath'
 import {
   DEFAULT_CONSTELLATION,
-  loadConstellation,
-  type ConstellationMap,
+  segmentsFromTrajectories,
 } from '../../data/constellation'
 
 gsap.registerPlugin(ScrollTrigger, MotionPathPlugin)
@@ -164,7 +163,6 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
   const ideaStageRef = useRef<HTMLDivElement>(null)
   const splitLayerRef = useRef<HTMLDivElement>(null)
   const ideaLayoutRef = useRef<HTMLDivElement>(null)
-  const constStageRef = useRef<HTMLDivElement>(null)
   const constSvgRef = useRef<SVGSVGElement>(null)
   const copyRef = useRef<HTMLDivElement>(null)
   const blueprintBgRef = useRef<HTMLDivElement>(null)
@@ -184,11 +182,12 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
   const dockDir = useRef<'flow' | 'overlay' | null>(null)
   const prevDockTop = useRef(0)
 
-  const [points, setPoints] = useState<SparkWaypoint[]>(() => loadSparkPath() ?? DEFAULT_SPARK_PATH)
-
-  const [map] = useState<ConstellationMap>(
-    () => loadConstellation() ?? DEFAULT_CONSTELLATION,
+  const [points, setPoints] = useState<SparkWaypoint[]>(
+    () => loadSparkPath() ?? DEFAULT_SPARK_PATH,
   )
+  const map = DEFAULT_CONSTELLATION
+  const trajSegments = segmentsFromTrajectories(map.trajectories)
+  const trajKey = JSON.stringify(map.trajectories)
 
   const applyPathToSvg = useCallback((wp: SparkWaypoint[]) => {
     const path = pathRef.current
@@ -200,7 +199,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
     const section = sectionRef.current
     if (!section) return
 
-    // Si no hay path guardado, medir textos
+    // Si no hay path guardado, medir textos → cabeza (así ENTRA engancha bien)
     const stored = loadSparkPath()
     if (!stored) {
       const els = phraseRefs.current.filter(Boolean) as HTMLElement[]
@@ -468,9 +467,6 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
       const sy = sp.top + sp.height / 2
       const dist = Math.hypot(sx - (hr.left + hr.width / 2), sy - (hr.top + hr.height / 2))
 
-      const st = animRef.current.st
-      const progress = st?.progress ?? 0
-
       const light = gsap.utils.clamp(
         0,
         1,
@@ -518,10 +514,8 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
         showEnter()
       }
 
-      // Solo soltar si realmente subes el Acto 1 (lejos de la cabeza).
-      // No usar histéresis relativa al latch: el pin puede reportar progress 0
-      // y eso siempre ganaba a cualquier umbral tipo latch-0.08.
-      if (enterLatched && !ideaPinActive() && progress < 0.65) {
+      // Al subir: si la luz sale de la silueta, ENTRA se va (no depende solo del progress)
+      if (enterLatched && !ideaPinActive() && absorb < 0.4) {
         enterLatched = false
         hideEnter()
       }
@@ -531,12 +525,12 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
       const pinOn = ideaPinActive()
       if (!pinOn) enterRescuedForPin = false
 
-      // Pin activo + hide que ganó la carrera: rescate solo ANTES del fade de ENTRA
+      // Pin activo + hide que ganó la carrera: rescate solo ANTES del fade de opacidad
       if (
         pinOn &&
         enterLatched &&
         !enterRescuedForPin &&
-        (ideaTl?.time() ?? 0) < 0.36 &&
+        (ideaTl?.time() ?? 0) < 0.26 &&
         (enterHideTween || (gsap.getProperty(enter, 'autoAlpha') as number) < 0.05)
       ) {
         enterRescuedForPin = true
@@ -706,18 +700,27 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
         0,
       )
 
-      // ENTRA por encima del ideaStage (z-6) para poder desvanecerse a la vista
-      gsap.set(enter, { zIndex: 8 })
+      // ENTRA: baja con la silueta YA; el fade de opacidad va DESPUÉS y más largo
+      // (si opacidad arranca en 0.14 con duración corta, un scroll la corta de golpe)
+      gsap.set(enter, { zIndex: 8, y: 0 })
+      ideaTl.to(
+        enter,
+        {
+          y: '75vh',
+          duration: 0.32,
+          ease: 'power1.in',
+        },
+        0.14,
+      )
       ideaTl.to(
         enter,
         {
           autoAlpha: 0,
-          filter: 'blur(12px)',
-          y: -20,
-          duration: 0.55,
+          filter: 'blur(10px)',
+          duration: 0.48,
           ease: 'none',
         },
-        0.38,
+        0.26,
       )
 
       // Sube al centro, saliendo de la cabeza, mientras la silueta se hunde
@@ -792,17 +795,21 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
         )
       })
 
-      const DRAW = 0.055
-      const GAP = 0.038
+      /* Todos los trayectos arrancan juntos; cada uno dura lo suyo (segmentos en cadena). */
+      const DRAW_AT = 0.82
       edgeCores.forEach((core, i) => {
         const glow = edgeGlows[i]
-        const at = 0.82 + i * GAP
+        const seg = trajSegments[i]
+        const segCount = Math.max(1, seg?.segCount ?? 1)
+        const totalDur = Math.max(0.04, seg?.duration ?? 0.28)
+        const segDur = totalDur / segCount
+        const at = DRAW_AT + (seg?.segIndex ?? 0) * segDur
         const drawTo = (el: SVGLineElement) => {
           const len = () => Math.max(el.getTotalLength(), 0.001)
           idea.fromTo(
             el,
             { strokeDasharray: len, strokeDashoffset: len },
-            { strokeDashoffset: 0, duration: DRAW, ease: 'none' },
+            { strokeDashoffset: 0, duration: segDur, ease: 'none' },
             at,
           )
         }
@@ -900,25 +907,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
       gsap.ticker.remove(onFrame)
       ctx.revert()
     }
-  }, [points])
-
-  /** Traspaso sin salto al mudar el playground + recalibrar ScrollTriggers.
-   *  Sin esto, al 100% del rasgado el preview desaparece y queda un viewport
-   *  vacío hasta scrollear al flujo. Midiendo el top antes/después y compensando
-   *  el scroll, el playground SE MANTIENE en el mismo sitio (misma instancia).
-   *  useLayoutEffect: debe aplicarse antes del pintado, sin un frame intermedio. */
-  useLayoutEffect(() => {
-    if (dockDir.current) {
-      dockDir.current = null
-      const el = document.getElementById('configurador')
-      if (el) {
-        const delta = el.getBoundingClientRect().top - prevDockTop.current
-        if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: 'instant' })
-      }
-    }
-    const t = window.setTimeout(() => ScrollTrigger.refresh(), 60)
-    return () => window.clearTimeout(t)
-  }, [dockedInFlow])
+  }, [points, trajKey])
 
   return (
     /* ACTO 1 + ACTO 2 INICIAN */
@@ -1119,10 +1108,11 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
               ref={ideaLayoutRef}
               className="absolute inset-0 z-[2] mx-auto grid max-w-6xl items-center gap-8 px-6 md:px-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16"
             >
-              <div
+              {/* <div
                 ref={constStageRef}
                 className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center"
-              >
+              > */}
+              <div className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center">
                 <svg
                   ref={constSvgRef}
                   viewBox="0 0 100 100"
@@ -1140,9 +1130,9 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
                       <feGaussianBlur in="SourceGraphic" stdDeviation="0.32" />
                     </filter>
                   </defs>
-                  {map.edges.map(([a, b], i) => {
-                    const sa = map.stars[a]
-                    const sb = map.stars[b]
+                  {trajSegments.map((seg, i) => {
+                    const sa = map.stars[seg.a]
+                    const sb = map.stars[seg.b]
                     if (!sa || !sb) return null
                     const shared = {
                       x1: sa.x,
@@ -1153,9 +1143,11 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
                       strokeLinecap: 'round' as const,
                     }
                     return (
-                      <g key={`edge-${i}`}>
+                      <g key={`edge-${seg.trajIndex}-${seg.segIndex}-${i}`}>
                         <line
                           data-edge-glow
+                          data-traj={seg.trajIndex}
+                          data-seg={seg.segIndex}
                           {...shared}
                           strokeWidth="0.62"
                           opacity={0.38}
@@ -1163,6 +1155,8 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
                         />
                         <line
                           data-edge-core
+                          data-traj={seg.trajIndex}
+                          data-seg={seg.segIndex}
                           {...shared}
                           strokeWidth="0.28"
                           opacity={1}
@@ -1225,7 +1219,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
                         {PLAN_COPY.lead}
                       </p>
                     </div>
-                    <ul className="mt-8 space-y-3 border-t border-white/15 pt-6">
+                    <ul className="mt-8 space-y-3">
                       {PLAN_COPY.items.map((item) => (
                         <li
                           key={item.title}
