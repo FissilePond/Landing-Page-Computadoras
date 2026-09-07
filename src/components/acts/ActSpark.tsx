@@ -172,6 +172,7 @@ export function ActSpark() {
   const blueprintBgRef = useRef<HTMLDivElement>(null)
   const planCopyRef = useRef<HTMLDivElement>(null)
   const stampRef = useRef<HTMLDivElement>(null)
+  const tearRevealRef = useRef<HTMLDivElement>(null)
   const tearEdgeRef = useRef<HTMLDivElement>(null)
   const paperSheetRef = useRef<HTMLDivElement>(null)
 
@@ -252,6 +253,7 @@ export function ActSpark() {
     const blueprintBg = blueprintBgRef.current
     const planCopy = planCopyRef.current
     const stamp = stampRef.current
+    const tearReveal = tearRevealRef.current
     const tearEdge = tearEdgeRef.current
     const paperSheet = paperSheetRef.current
     if (
@@ -278,6 +280,7 @@ export function ActSpark() {
       !blueprintBg ||
       !planCopy ||
       !stamp ||
+      !tearReveal ||
       !tearEdge ||
       !paperSheet
     )
@@ -638,7 +641,8 @@ export function ActSpark() {
         filter: 'blur(3px)',
         transformOrigin: '50% 50%',
       })
-      gsap.set(tearEdge, { autoAlpha: 0, top: '100%', yPercent: -50, bottom: 'auto' })
+      gsap.set(tearReveal, { autoAlpha: 0 })
+      gsap.set(tearEdge, { autoAlpha: 0 })
       gsap.set(paperSheet, { y: 0, clipPath: 'inset(0 0 0% 0)' })
       ideaStage.style.setProperty('--tear-p', '0')
       gsap.set(ideaStage, { autoAlpha: 1, backgroundColor: 'transparent' })
@@ -869,38 +873,69 @@ export function ActSpark() {
       )
 
       /* ========== Rasgado tipo Trevor Noah ==========
-         Plano se queda. clip lo rompe de abajo→arriba con el scroll.
-         Borde = SOLO la fibra fina en la línea de corte (no una franja blanca). */
+         El frente cruza de izquierda→derecha. Detrás de él el plano conserva
+         solo la parte superior y deja visible una vista estable del Acto 4. */
       const tearDur = Math.max(0.2, TEAR_END - TEAR_START)
-      const playground = document.getElementById('configurador')
+      idea.set(tearReveal, { autoAlpha: 1 }, TEAR_START)
+      const tearFiber = tearEdge.querySelector<SVGPathElement>('[data-tear-fiber]')
+      const tearHighlight = tearEdge.querySelector<SVGPathElement>('[data-tear-highlight]')
+
+      const tearYAt = (x: number, base: number, amplitude: number) => {
+        const broad = Math.sin(x * 0.18 + 0.8) * amplitude
+        const fine = Math.sin(x * 0.63 + 2.1) * amplitude * 0.42
+        const tooth = ((((Math.floor(x / 3.25) * 17) % 11) - 5) / 5) * amplitude * 0.32
+        const diagonal = -(x / 100) * 7.5
+        return gsap.utils.clamp(4.5, 96.5, base + diagonal + broad + fine + tooth)
+      }
 
       const applyTearProgress = (p: number) => {
         const t = gsap.utils.clamp(0, 1, p)
-        const cut = t * 100
-        // Recorta el plano: más scroll → más Acto 4 abajo
-        paperSheet.style.clipPath = `inset(0 0 ${cut}% 0)`
-        ideaStage.style.setProperty('--tear-p', String(t))
-        // Fibra centrada en la línea de corte (altura ~28–36px, no 160px)
-        gsap.set(tearEdge, {
-          top: `${100 - cut}%`,
-          yPercent: -50,
-          autoAlpha: t > 0.02 && t < 0.97 ? 1 : 0,
+        const headX = t * 100
+        const opening = gsap.parseEase('power1.inOut')(t)
+        const baseY = gsap.utils.interpolate(90, 14.5, opening)
+        const amplitude = gsap.utils.interpolate(0.9, 1.9, t)
+        const sampleCount = Math.max(1, Math.ceil(headX / 3.2))
+        const seam = Array.from({ length: sampleCount + 1 }, (_, i) => {
+          const x = i === sampleCount ? headX : (headX * i) / sampleCount
+          return { x, y: tearYAt(x, baseY, amplitude) }
         })
+        const head = seam[seam.length - 1]
+        const clipPoints = [
+          '0% 0%',
+          '100% 0%',
+          '100% 100%',
+          `${head.x.toFixed(3)}% 100%`,
+          ...[...seam]
+            .reverse()
+            .map(({ x, y }) => `${x.toFixed(3)}% ${y.toFixed(3)}%`),
+          '0% 0%',
+        ]
+
+        paperSheet.style.clipPath = `polygon(${clipPoints.join(',')})`
+        ideaStage.style.setProperty('--tear-p', String(t))
+        tearReveal.style.setProperty(
+          '--reveal-top',
+          `${gsap.utils.clamp(13, 94, head.y + 5.5).toFixed(2)}%`,
+        )
+
+        const seamPath = seam
+          .map(({ x, y }, i) => `${i === 0 ? 'M' : 'L'} ${(x * 10).toFixed(1)} ${(y * 10).toFixed(1)}`)
+          .join(' ')
+        const fiberBottom = [...seam]
+          .reverse()
+          .map(({ x, y }, i) => {
+            const depth = 1.05 + Math.sin(x * 0.51 + i) * 0.28
+            return `L ${(x * 10).toFixed(1)} ${((y + depth) * 10).toFixed(1)}`
+          })
+          .join(' ')
+        tearFiber?.setAttribute('d', `${seamPath} ${fiberBottom} Z`)
+        tearHighlight?.setAttribute('d', seamPath)
+
+        gsap.set(tearEdge, { autoAlpha: t > 0.012 && t < 0.995 ? 1 : 0 })
       }
 
       gsap.set(paperSheet, { y: 0, clearProps: 'transform' })
       applyTearProgress(0)
-
-      idea.call(() => {
-        if (!playground) return
-        gsap.set(playground, {
-          position: 'fixed',
-          inset: 0,
-          zIndex: 5,
-          width: '100%',
-          marginTop: 0,
-        })
-      }, TEAR_START)
 
       idea.set(ideaStage, { zIndex: 6 }, TEAR_START)
 
@@ -916,29 +951,23 @@ export function ActSpark() {
         TEAR_START,
       )
 
-      idea.call(() => {
-        applyTearProgress(1)
-        if (!playground) return
-        gsap.set(playground, { clearProps: 'position,inset,zIndex,width,marginTop' })
-      }, TEAR_END)
       idea.set(ideaStage, { autoAlpha: 0 }, TEAR_END)
-
-      ScrollTrigger.refresh()
     }, root)
 
+    let resizeTimer: number | undefined
     const onResize = () => {
       sizeStages()
       resizeCanvas()
-      ScrollTrigger.refresh()
+      window.clearTimeout(resizeTimer)
+      resizeTimer = window.setTimeout(() => ScrollTrigger.refresh(), 160)
     }
     window.addEventListener('resize', onResize)
     gsap.ticker.add(onFrame)
 
     return () => {
       window.removeEventListener('resize', onResize)
+      window.clearTimeout(resizeTimer)
       gsap.ticker.remove(onFrame)
-      const pg = document.getElementById('configurador')
-      if (pg) gsap.set(pg, { clearProps: 'position,inset,zIndex,width,marginTop' })
       ctx.revert()
     }
   }, [points])
@@ -1239,6 +1268,40 @@ export function ActSpark() {
           }`}
           style={{ ['--tear-y' as string]: 100 }}
         >
+          {/* Vista estable del siguiente acto. Vive dentro del mismo pin para que
+              el rasgado pueda revelarlo sin sacar #configurador del flujo. */}
+          <div
+            ref={tearRevealRef}
+            className="absolute inset-0 z-0 overflow-hidden bg-void"
+            aria-hidden
+          >
+            <div
+              className="absolute inset-x-0 mx-auto max-w-6xl px-6 transition-none md:px-10"
+              style={{ top: 'var(--reveal-top, 94%)' }}
+            >
+              <p className="mb-3 text-xs font-medium tracking-[0.3em] text-spark uppercase">
+                Acto IV
+              </p>
+              <h2 className="max-w-3xl font-display text-4xl font-bold tracking-tight text-paper sm:text-5xl">
+                El taller se pone a trabajar
+              </h2>
+              <p className="mt-4 max-w-xl text-mist">
+                El plan ya está aprobado. Elige las piezas — o salta y sigue.
+              </p>
+              <div className="mt-8 grid h-[54vh] grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)] overflow-hidden rounded-sm border border-white/10 bg-fog/30">
+                <div className="relative border-r border-white/10 bg-black/25">
+                  <div className="absolute inset-8 rounded-sm border border-spark/15 bg-[radial-gradient(circle_at_50%_45%,rgba(250,204,21,0.09),transparent_48%)]" />
+                </div>
+                <div className="space-y-4 p-6">
+                  <div className="h-7 w-28 rounded-sm bg-white/10" />
+                  <div className="h-20 rounded-sm border border-white/10 bg-white/[0.025]" />
+                  <div className="h-20 rounded-sm border border-white/10 bg-white/[0.025]" />
+                  <div className="h-20 rounded-sm border border-white/10 bg-white/[0.025]" />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div
             ref={paperSheetRef}
             className="absolute inset-0 z-[1] will-change-[clip-path]"
@@ -1438,53 +1501,58 @@ export function ActSpark() {
             </div>
           </div>
 
-            {/* Fibra del rasgado: fina, en la línea de corte — no una franja que tapa */}
+            {/* Corte irregular, fibra y solapa que acompañan el frente de izquierda a derecha */}
             <div
               ref={tearEdgeRef}
-              className="pointer-events-none absolute inset-x-[-2%] z-[10] h-7 w-[104%] sm:h-8 md:h-9"
+              className="pointer-events-none absolute inset-0 z-[10] overflow-hidden"
               aria-hidden
               style={{
-                top: '100%',
-                filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.45))',
+                filter: 'drop-shadow(0 8px 12px rgba(0,0,0,0.5))',
               }}
             >
               <svg
-                viewBox="0 0 1200 36"
+                viewBox="0 0 1000 1000"
                 preserveAspectRatio="none"
                 className="block h-full w-full"
               >
+                <defs>
+                  <filter
+                    id={`${eyeMaskId}-paper-rough`}
+                    x="-8%"
+                    y="-20%"
+                    width="116%"
+                    height="140%"
+                  >
+                    <feTurbulence
+                      type="fractalNoise"
+                      baseFrequency="0.018 0.11"
+                      numOctaves="2"
+                      seed="17"
+                      result="noise"
+                    />
+                    <feDisplacementMap
+                      in="SourceGraphic"
+                      in2="noise"
+                      scale="7"
+                      xChannelSelector="R"
+                      yChannelSelector="B"
+                    />
+                  </filter>
+                </defs>
                 <path
-                  fill="#f3eee4"
-                  d="M0 18
-                    C40 6 70 28 110 14
-                    C150 2 180 30 220 16
-                    C260 4 300 26 340 12
-                    C380 0 420 32 460 18
-                    C500 6 540 28 580 10
-                    C620 0 660 30 700 16
-                    C740 4 780 28 820 12
-                    C860 2 900 30 940 14
-                    C980 4 1020 26 1060 12
-                    C1100 2 1140 28 1180 16
-                    L1200 18 L1200 36 L0 36 Z"
+                  data-tear-fiber
+                  fill="#eeeae1"
+                  filter={`url(#${eyeMaskId}-paper-rough)`}
                 />
                 <path
+                  data-tear-highlight
                   fill="none"
                   stroke="#fffef8"
                   strokeWidth="1.2"
-                  opacity="0.85"
-                  d="M0 18
-                    C40 6 70 28 110 14
-                    C150 2 180 30 220 16
-                    C260 4 300 26 340 12
-                    C380 0 420 32 460 18
-                    C500 6 540 28 580 10
-                    C620 0 660 30 700 16
-                    C740 4 780 28 820 12
-                    C860 2 900 30 940 14
-                    C980 4 1020 26 1060 12
-                    C1100 2 1140 28 1180 16
-                    L1200 18"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity="0.78"
+                  vectorEffect="non-scaling-stroke"
                 />
               </svg>
             </div>

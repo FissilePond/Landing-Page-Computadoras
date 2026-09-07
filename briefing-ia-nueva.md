@@ -1,6 +1,10 @@
 # Briefing para una IA nueva (cero contexto)
 
-Léelo completo antes de tocar código. Si algo choca con el repo, **gana** `plan-como-estara.md`.
+**Primero lee:** `contexto-tecnico-ia.md` (mapa de código, funciones, IDs — ahorra tokens).  
+**Luego:** `plan-como-estara.md` (cómo debe quedar narrativo/visual).  
+Este archivo es onboarding corto. Si algo choca, **gana** `plan-como-estara.md` en producto y `contexto-tecnico-ia.md` en rutas/API.
+
+Léelo completo antes de tocar código.
 
 ---
 
