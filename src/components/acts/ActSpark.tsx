@@ -41,8 +41,9 @@ const TRAIL_MAX_POINTS = 160
 
 /** Pantallas de scroll: Acto 2 (idea) + Acto 3 (imagen) + tramo fijo → Acto 4.
  *  Acto 2 acortado: menos alto, menos scroll para pasarlo. */
+// MARCELO
 const IDEA_SCREENS = 3
-const PLAN_SCREENS = 1.6
+const PLAN_SCREENS = 1.45
 const TEAR_SCREENS = 1.2
 const PIN_SCREENS = IDEA_SCREENS + PLAN_SCREENS + TEAR_SCREENS
 
