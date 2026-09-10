@@ -1,4 +1,4 @@
-import { useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -39,10 +39,11 @@ const TRAIL_LIFE_MS = 1200
 const TRAIL_STEP = 0.12
 const TRAIL_MAX_POINTS = 160
 
-/** Pantallas de scroll: Acto 2 (idea) + Acto 3 (plano) + rasgado → Acto 4 */
-const IDEA_SCREENS = 4.8
-const PLAN_SCREENS = 2.8
-const TEAR_SCREENS = 3.2
+/** Pantallas de scroll: Acto 2 (idea) + Acto 3 (imagen) + tramo fijo → Acto 4.
+ *  Acto 2 acortado: menos alto, menos scroll para pasarlo. */
+const IDEA_SCREENS = 3
+const PLAN_SCREENS = 1.6
+const TEAR_SCREENS = 1.2
 const PIN_SCREENS = IDEA_SCREENS + PLAN_SCREENS + TEAR_SCREENS
 
 /** Tiempos en la timeline pineada (Acto 2 ocupa 0→1; el resto se escala al scroll).
@@ -164,6 +165,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
   const splitLayerRef = useRef<HTMLDivElement>(null)
   const ideaLayoutRef = useRef<HTMLDivElement>(null)
   const constSvgRef = useRef<SVGSVGElement>(null)
+  const acto3ImgRef = useRef<HTMLImageElement>(null)
   const copyRef = useRef<HTMLDivElement>(null)
   const blueprintBgRef = useRef<HTMLDivElement>(null)
   const planCopyRef = useRef<HTMLDivElement>(null)
@@ -171,6 +173,24 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
   const tearRevealRef = useRef<HTMLDivElement>(null)
   const tearEdgeRef = useRef<HTMLDivElement>(null)
   const paperSheetRef = useRef<HTMLDivElement>(null)
+
+  /** Autoscroll (issue #1): botón "auto" en la esquina superior derecha.
+   *  Baja lento y constante hasta ENTRA; ahí se pausa y pide input humano
+   *  (scroll/click/tecla) para seguir al Acto 2; igual del Acto 2 al Acto 3.
+   *  Después del Acto 3 no hay autoscroll (se apaga solo). */
+  const [autoOn, setAutoOn] = useState(false)
+  const [autoWaiting, setAutoWaiting] = useState(false)
+  const autoOnRef = useRef(false)
+  const autoWaitingRef = useRef(false)
+  const autoHitRef = useRef<boolean[]>([false, false, false])
+  useLayoutEffect(() => {
+    autoOnRef.current = autoOn
+    if (!autoOn) {
+      autoWaitingRef.current = false
+      setAutoWaiting(false)
+      autoHitRef.current = [false, false, false]
+    }
+  }, [autoOn])
 
   /** El único Acto IV (playground) vive en dos docks, una sola instancia vía portal:
    *  overlay = preview tras el papel durante el rasgado; flujo = sección real tras el pin. */
@@ -237,6 +257,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
     const splitLayer = splitLayerRef.current
     const ideaLayout = ideaLayoutRef.current
     const constSvg = constSvgRef.current
+    const acto3Img = acto3ImgRef.current
     const copy = copyRef.current
     const blueprintBg = blueprintBgRef.current
     const planCopy = planCopyRef.current
@@ -264,6 +285,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
       !splitLayer ||
       !ideaLayout ||
       !constSvg ||
+      !acto3Img ||
       !copy ||
       !blueprintBg ||
       !planCopy ||
@@ -615,6 +637,9 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
       gsap.set(copy.querySelector('[data-idea-title]'), { opacity: 0, y: 16 })
       gsap.set(copy.querySelectorAll('[data-idea-item]'), { opacity: 0, y: 14 })
       gsap.set(blueprintBg, { autoAlpha: 0 })
+      // Acto 3 (issue #2): la imagen /acto2.png ocupa el mismo lugar que la
+      // constelación y solo hace fade (sin zoom ni desplazamiento).
+      gsap.set(acto3Img, { autoAlpha: 0 })
       gsap.set(planCopy.querySelectorAll('[data-plan-head]'), { opacity: 0, y: 12 })
       gsap.set(planCopy.querySelectorAll('[data-plan-item]'), { opacity: 0, y: 14 })
       gsap.set(stamp, {
@@ -833,7 +858,9 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
         0.88,
       )
 
-      /* ========== ACTO 3 — el plan (blueprint) ========== */
+      /* ========== ACTO 3 — imagen /acto2.png en lugar del plano (issue #2) ==========
+         La constelación se desvanece al entrar al Acto 3 y en su mismo lugar
+         aparece la imagen con solo un fade. El Acto 2 no se toca. */
       const morphDur = Math.max(0.12, PLAN_COPY_AT - PLAN_MORPH)
       idea.to(
         copy,
@@ -842,12 +869,12 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
       )
       idea.to(stars, { opacity: 0, scale: 0.4, duration: morphDur * 0.7, ease: 'none' }, PLAN_MORPH)
       idea.to(edgeGlows, { opacity: 0, duration: morphDur * 0.5, ease: 'none' }, PLAN_MORPH)
-      idea.to(
-        edgeCores,
-        { attr: { stroke: '#f4f7fb' }, stroke: '#f4f7fb', duration: morphDur, ease: 'none' },
-        PLAN_MORPH,
-      )
+      idea.to(edgeCores, { opacity: 0, duration: morphDur * 0.5, ease: 'none' }, PLAN_MORPH)
+      idea.to(constSvg, { autoAlpha: 0, duration: morphDur * 0.5, ease: 'none' }, PLAN_MORPH)
+      // Solo fade para la imagen (sin y/scale): entra donde estaba la constelación.
+      // El grid blueprint del Acto 3 se conserva como fondo.
       idea.to(blueprintBg, { autoAlpha: 1, duration: morphDur, ease: 'none' }, PLAN_MORPH)
+      idea.to(acto3Img, { autoAlpha: 1, duration: morphDur, ease: 'none' }, PLAN_MORPH)
       idea.to(
         planCopy.querySelectorAll('[data-plan-head]'),
         { opacity: 1, y: 0, duration: 0.18, ease: 'none' },
@@ -909,9 +936,114 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
     }
   }, [points, trajKey])
 
+  /* ========== Autoscroll (issue #1) ==========
+     Botón "auto": baja lento y constante. Hitos: separación de los puntos
+     (constelación Acto 2), fin Acto 2 y fin Acto 3. En los dos primeros se
+     pausa y espera input humano (wheel/touch/click/tecla) para continuar;
+     tras el Acto 3 se apaga. */
+  useEffect(() => {
+    if (!autoOn) return
+    const section = sectionRef.current
+    if (!section) return
+    // Velocidades separadas por acto (px/s): Acto 1 = recorrido de frases,
+    // Acto 2 = tramo pineado (luz, constelación). Ajustables por separado.
+    // AJUSTA A TU GUSTO, MARCELO
+    const SPEED_ACT1_PX_S = 1000
+    const SPEED_ACT2_PX_S = 220
+    // Dónde termina el autoscroll del Acto 2 (px, relativo al cálculo base).
+    // Negativo = termina antes, positivo = después. Ej: -20 = 20px antes.
+    
+    const ACT2_END_OFFSET_PX = -20
+    let raf = 0
+    let last = performance.now()
+    const checkpoints = () => {
+      const top = section.offsetTop
+      const pinDist = window.innerHeight * PIN_SCREENS
+      const yEntra = top + Math.max(1, section.offsetHeight - window.innerHeight)
+      const total = Math.max(0.001, TEAR_END)
+      // Misma marca que la timeline: a 0.54 la luz se rompe y los puntos
+      // vuelan a cada estrella (separación → constelación del Acto 2).
+      const ySplit = yEntra + pinDist * (0.54 / total)
+      const yActo2 = yEntra + pinDist * (PLAN_START / total) + ACT2_END_OFFSET_PX
+      const yActo3 = yEntra + pinDist
+      return [yEntra, ySplit, yActo2, yActo3]
+    }
+    const resume = () => {
+      if (!autoOnRef.current || !autoWaitingRef.current) return
+      autoWaitingRef.current = false
+      setAutoWaiting(false)
+    }
+    const onWheel = () => resume()
+    const onTouch = () => resume()
+    const onKey = () => resume()
+    const onClick = () => resume()
+    // Captura para ganarle al scroll manual: el input humano reanuda, no compite.
+    window.addEventListener('wheel', onWheel, { passive: true, capture: true })
+    window.addEventListener('touchmove', onTouch, { passive: true, capture: true })
+    window.addEventListener('keydown', onKey, { capture: true })
+    window.addEventListener('click', onClick, { capture: true })
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick)
+      if (!autoOnRef.current || autoWaitingRef.current) {
+        last = now
+        return
+      }
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      const [yEntra, ySplit, yActo2, yActo3] = checkpoints()
+      const y = window.scrollY
+      // Pasado el Acto 3: fin del autoscroll.
+      if (y >= yActo3 - 2) {
+        setAutoOn(false)
+        return
+      }
+      // Velocidad según el acto en curso: Acto 1 antes del pin, Acto 2 después.
+      const speed = y < yEntra ? SPEED_ACT1_PX_S : SPEED_ACT2_PX_S
+      const next = y + speed * dt
+      const stops = [ySplit, yActo2]
+      for (let i = 0; i < stops.length; i++) {
+        const s = stops[i] as number
+        if (!autoHitRef.current[i] && y < s - 2 && next >= s - 2) {
+          window.scrollTo({ top: s })
+          autoHitRef.current[i] = true
+          autoWaitingRef.current = true
+          setAutoWaiting(true)
+          return
+        }
+      }
+      window.scrollTo({ top: next })
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('wheel', onWheel, { capture: true })
+      window.removeEventListener('touchmove', onTouch, { capture: true })
+      window.removeEventListener('keydown', onKey, { capture: true })
+      window.removeEventListener('click', onClick, { capture: true })
+    }
+  }, [autoOn])
+
   return (
     /* ACTO 1 + ACTO 2 INICIAN */
     <div ref={rootRef} className="relative">
+      {/* Botón auto: esquina superior derecha, velocidad lenta y constante. */}
+      <button
+        type="button"
+        onClick={() => setAutoOn((v) => !v)}
+        aria-pressed={autoOn}
+        aria-label={autoOn ? 'Detener autoscroll' : 'Activar autoscroll'}
+        className={[
+          'fixed top-20 right-5 z-[60] rounded-full border px-4 py-1.5',
+          'text-[11px] font-semibold tracking-[0.22em] uppercase backdrop-blur',
+          'transition',
+          autoOn
+            ? 'border-spark/80 bg-spark text-black shadow-[0_0_18px_rgba(250,204,21,0.45)]'
+            : 'border-white/40 bg-black/40 text-white/85 hover:bg-black/60',
+          autoWaiting ? 'animate-pulse' : '',
+        ].join(' ')}
+      >
+        {autoWaiting ? 'auto · toca' : 'Auto scroll'}
+      </button>
       <section
         ref={sectionRef}
         id="deseo"
@@ -1113,6 +1245,14 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
                 className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center"
               > */}
               <div className="relative aspect-[4/5] w-full max-h-[70vh] justify-self-start self-center">
+                {/* Acto 3 (issue #2): misma caja que la constelación, solo fade. */}
+                <img
+                  ref={acto3ImgRef}
+                  src="/acto2.png"
+                  alt="Plano del equipo"
+                  className="absolute inset-0 h-full w-full object-contain"
+                  aria-hidden
+                />
                 <svg
                   ref={constSvgRef}
                   viewBox="0 0 100 100"
@@ -1326,7 +1466,7 @@ export function ActSpark({ playground }: { playground: ReactNode }) {
         <svg
           viewBox="0 0 1000 120"
           preserveAspectRatio="none"
-          className="absolute top-[-125px] z-[40] block w-full"
+          className="absolute top-[-150px] z-[40] block w-full"
           style={{ filter: 'drop-shadow(0 10px 14px rgba(0,0,0,0.45))' }}
         >
           <defs>

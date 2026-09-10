@@ -172,11 +172,15 @@ export function ActConfig({ configuration }: { configuration: ConfigurationSumma
             <li data-act5-copy className="border-l-2 border-spark/70 pl-4">
               Estrés, temperaturas y estabilidad
             </li>
-            {configuration.total > 0 && (
-              <li data-act5-copy className="border-l-2 border-spark/70 pl-4">
-                Configuración: ${configuration.total.toLocaleString('es-MX')} MXN
-              </li>
-            )}
+            {/* Configuración: siempre en el DOM (issue #4) para que entre con el
+                mismo fade/stagger que el resto de la lista. Si se montara tarde
+                (cuando el total llega después del mount), quedaba flotando y
+                siempre visible fuera de la animación. */}
+            <li data-act5-copy className="border-l-2 border-spark/70 pl-4">
+              {configuration.total > 0
+                ? `Configuración: $${configuration.total.toLocaleString('es-MX')} MXN`
+                : 'Configuración abierta — la definimos contigo'}
+            </li>
           </ul>
         </div>
 
